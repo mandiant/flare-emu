@@ -112,4 +112,4 @@ The following is an incomplete list of some of the useful utility functions prov
 
 
 # [Learn More](#learn)
-To learn more about **flare-emu**, please read our introductory blog at `<blog link>`.
+To learn more about **flare-emu**, please read our introductory blog at https://www.fireeye.com/blog/threat-research/2018/12/automating-objective-c-code-analysis-with-emulation.html.
