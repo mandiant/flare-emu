@@ -74,6 +74,6 @@ if __name__ == '__main__':
             (eVa == 0 or (eVa >= idc.get_inf_attr(idc.INF_MIN_EA) and eVa <= idc.get_inf_attr(idc.INF_MAX_EA)))):
         if eVa == 0:
             eVa = None
-        mu = eh.emulateRange(sVa, eVa, emuHook=instructionHook, callHook=callHook)
+        mu = eh.emulateRange(sVa, eVa, instructionHook=instructionHook, callHook=callHook)
     else:
         print "Error: supplied addresses not within IDB address range"
