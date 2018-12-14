@@ -37,6 +37,11 @@ ARMNOP = "\x00\xf0\x20\xe3"
 ARM64NOP = "\x1f\x20\x03\xd5"
 MAX_ALLOC_SIZE = 10 * 1024 * 1024
 
+try:
+    long        # Python 2
+except NameError:
+    long = int  # Python 3
+
 class EmuHelper():
     def __init__(self, verbose = 0):
         self.verbose = verbose
@@ -2340,7 +2345,7 @@ class EmuHelper():
                 mem = self.allocEmuMem(len(val))
                 mu.mem_write(mem, val)
                 val = mem
-            elif isinstance(val, int) or isinstance(val, long):
+            elif isinstance(val, (int, long)):
                 pass
             else:
                 logging.debug("incorrect type for %s" % reg)
@@ -2355,7 +2360,7 @@ class EmuHelper():
                 mu.mem_write(mem, stack[i])
                 stack[i] = mem
                 val = mem
-            elif isinstance(stack[i], int) or isinstance(stack[i], long):
+            elif isinstance(stack[i], (int, long)):
                 val = stack[i]
             else:
                 logging.debug("incorrect type for stack[%d]" % (i))
