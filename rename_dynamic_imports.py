@@ -43,7 +43,7 @@ def instructionHook(uc, address, size, userData):
                 makeName(idc.get_operand_value(address, 0), userData["imp"])
                 del(userData["imp"])
 
-    except Exception, err:
+    except Exception as err:
         print "Error in instructionHook: %s" % str(err)
         eh.stopEmulation(userData)
 
@@ -59,7 +59,7 @@ def callHook(address, argv, funcName, userData):
             # for code that checks for a return value
             eh.uc.reg_write(eh.regs["ret"], 1)
 
-    except Exception, err:
+    except Exception as err:
         print "Error in callHook: %s" % str(err)
         eh.stopEmulation(userData)
 
