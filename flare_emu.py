@@ -37,6 +37,11 @@ ARMNOP = "\x00\xf0\x20\xe3"
 ARM64NOP = "\x1f\x20\x03\xd5"
 MAX_ALLOC_SIZE = 10 * 1024 * 1024
 
+try:
+    long        # Python 2
+except NameError:
+    long = int  # Python 3
+
 class EmuHelper():
     def __init__(self, verbose = 0):
         self.verbose = verbose
@@ -160,7 +165,7 @@ class EmuHelper():
                 flow, paths = self.getPath(x.frm)
                 if flow is not None:
                     targetInfo[x.frm] = (flow, paths)
-        elif type(target) is list:
+        elif isinstance(target, list):
             for i, t in enumerate(target):
                 logging.debug("getting a path to %s, %d of %d" %
                               (self.hexString(t), i + 1, len(target)))
@@ -2031,7 +2036,7 @@ class EmuHelper():
                   uc.reg_write(self.regs[idc.print_operand(address, 0)], idc.get_operand_value(address, 1))
                   self.skipInstruction(userData)
 
-        except Exception, err:
+        except Exception as err:
             logging.debug("exception in emulateRange_codehook @%s: %s" % (self.hexString(address), str(err)))
             print("exception in emulateRange_codehook @%s: %s" % (self.hexString(address), str(err)))
             self.stopEmulation(userData)
@@ -2055,7 +2060,7 @@ class EmuHelper():
                               self.hexString(address))
                 return
 
-        except Exception, err:
+        except Exception as err:
             logging.debug("exception in emulateBytes_codehook @%s: %s" % (self.hexString(address), str(err)))
             print("exception in emulateBytes_codehook @%s: %s" % (self.hexString(address), str(err)))
             self.stopEmulation(userData)
@@ -2336,11 +2341,11 @@ class EmuHelper():
         mu.reg_write(self.regs["sp"], self.stack)
         for reg in registers:
             val = registers[reg]
-            if type(val) is str:
+            if isinstance(val, str):
                 mem = self.allocEmuMem(len(val))
                 mu.mem_write(mem, val)
                 val = mem
-            elif type(val) == int or type(val) == long:
+            elif isinstance(val, (int, long)):
                 pass
             else:
                 logging.debug("incorrect type for %s" % reg)
@@ -2350,12 +2355,12 @@ class EmuHelper():
 
         # setup stack
         for i in range(0, len(stack)):
-            if type(stack[i]) is str:
+            if isinstance(stack[i], str):
                 mem = self.allocEmuMem(len(stack[i]))
                 mu.mem_write(mem, stack[i])
                 stack[i] = mem
                 val = mem
-            elif type(stack[i]) == int or type(stack[i]) == long:
+            elif isinstance(stack[i], (int, long)):
                 val = stack[i]
             else:
                 logging.debug("incorrect type for stack[%d]" % (i))
