@@ -86,15 +86,17 @@ class EmuHelper():
     # hookApis: set to False if you don't want flare-emu to emulate common 
     #     runtime memory and string functions, defaults to True
     # returns the emulation object in its state after the emulation completes
+    # count: Value passed to unicorn's uc_emu_start to indicate max number of
+    #     instructions to emulate, Defaults to 0 (all code available).
     def emulateRange(self, startAddr, endAddr=None, registers=None, stack=None, instructionHook=None, callHook=None,
-                     hookData=None, skipCalls=True, hookApis=True):
+                     hookData=None, skipCalls=True, hookApis=True, count=0):
         if registers is None:
             registers = {}
         if stack is None:
             stack = []
         userData = {"EmuHelper": self, "funcStart": idc.get_func_attr(startAddr, idc.FUNCATTR_START),
                     "funcEnd": idc.get_func_attr(startAddr, idc.FUNCATTR_END), "skipCalls": skipCalls,
-                    "endAddr": endAddr, "func_t": idaapi.get_func(startAddr), "callHook": callHook, "hookApis": hookApis}
+                    "endAddr": endAddr, "func_t": idaapi.get_func(startAddr), "callHook": callHook, "hookApis": hookApis, "count": count}
         if hookData:
             userData.update(hookData)
         mu = self.uc
@@ -110,16 +112,16 @@ class EmuHelper():
             unicorn.UC_HOOK_INTR, self._hookInterrupt, userData)
         if self.arch == unicorn.UC_ARCH_ARM:
             userData["changeThumbMode"] = True
-        mu.emu_start(startAddr, userData["funcEnd"])
+        mu.emu_start(startAddr, userData["funcEnd"], count=count)
         return mu
         
     # call emulateRange using selected instructions in IDA Pro as start/end addresses
     def emulateSelection(self, registers=None, stack=None, instructionHook=None, callHook=None,
-                     hookData=None, skipCalls=True, hookApis=True):
+                     hookData=None, skipCalls=True, hookApis=True, count=0):
         selection = idaapi.read_selection()
         if selection[0]:
             self.emulateRange(selection[1], selection[2], registers, stack, instructionHook, 
-                              callHook, hookData, skipCalls, hookApis)
+                              callHook, hookData, skipCalls, hookApis, count=count)
 
     # target: finds first path through function to target using depth first
     #     search for each address in list, if a single address is specified,
