@@ -461,6 +461,13 @@ class EmuHelper():
             addr += 2
         return out
 
+    # returns a <size> string of bytes read from <addr>
+    def getEmuBytes(self, addr, size):
+        out = ""
+        for i in range(addr, addr+size):
+            out += self.uc.mem_read(i, 1)
+        return out
+
     # reads pointer value in emulator's memory
     def getEmuPtr(self, va):
         return struct.unpack(self.pack_fmt, self.uc.mem_read(va, self.size_pointer))[0]
