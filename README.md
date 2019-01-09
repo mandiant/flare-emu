@@ -98,6 +98,8 @@ The following is an incomplete list of some of the useful utility functions prov
 
 `getEmuWideString(address)` -  Returns the string of "wide characters" located at an address in the emulated memory, up to a null terminator. "Wide characters" is meant loosely here to refer to any series of bytes containing a null byte every other byte, as would be the case for an ASCII string encoded in UTF-16 LE. Characters are not necessarily printable.
 
+`getEmuBytes(address, length)` - Returns a string of bytes located at an address in the emulated memory.
+
 `getEmuPtr(address)` - Returns the pointer value located at the given address.
 
 `writeEmuPtr(address)` - Writes the pointer value at the given address in the emulated memory.
