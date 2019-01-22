@@ -55,6 +55,7 @@ class EmuHelper():
         self.filetype = "UNKNOWN"
         self.uc = None
         self.h_userhook = None
+        self.h_memaccesshook = None
         self.h_codehook = None
         self.h_memhook = None
         self.h_inthook = None
@@ -83,13 +84,15 @@ class EmuHelper():
     # callHook: callback function that will be called whenever the emulator
     #     encounters a "call" instruction. keep in mind your skipCalls value
     #     and that emulateRange will always skip over calls to empty memory
+    # memAccessHook: hook function that runs when the emulator encounters a
+    #     memory read or write
     # hookApis: set to False if you don't want flare-emu to emulate common 
     #     runtime memory and string functions, defaults to True
     # returns the emulation object in its state after the emulation completes
     # count: Value passed to unicorn's uc_emu_start to indicate max number of
     #     instructions to emulate, Defaults to 0 (all code available).
     def emulateRange(self, startAddr, endAddr=None, registers=None, stack=None, instructionHook=None, callHook=None,
-                     hookData=None, skipCalls=True, hookApis=True, count=0):
+                     memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, count=0):
         if registers is None:
             registers = {}
         if stack is None:
@@ -106,6 +109,9 @@ class EmuHelper():
             unicorn.UC_HOOK_CODE, self._emulateRangeCodeHook, userData)
         if instructionHook:
             self.h_userhook = mu.hook_add(unicorn.UC_HOOK_CODE, instructionHook, userData)
+        if memAccessHook:
+            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, memAccessHook,
+                                                    userData)
         self.h_memhook = mu.hook_add(unicorn.UC_HOOK_MEM_READ_UNMAPPED | unicorn.UC_HOOK_MEM_WRITE_UNMAPPED |
                                      unicorn.UC_HOOK_MEM_FETCH_UNMAPPED, self._hookMemInvalid, userData)
         self.h_inthook = mu.hook_add(
@@ -353,6 +359,9 @@ class EmuHelper():
         if self.h_userhook:
             self.uc.hook_del(self.h_userhook)
             self.h_userhook = None
+        if self.h_memaccesshook:
+            self.uc.hook_del(self.h_memaccesshook)
+            self.h_memaccesshook = None
         if self.h_codehook:
             self.uc.hook_del(self.h_codehook)
             self.h_codehook = None
