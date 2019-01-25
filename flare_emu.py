@@ -123,11 +123,11 @@ class EmuHelper():
         
     # call emulateRange using selected instructions in IDA Pro as start/end addresses
     def emulateSelection(self, registers=None, stack=None, instructionHook=None, callHook=None,
-                     hookData=None, skipCalls=True, hookApis=True, count=0):
+                     memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, count=0):
         selection = idaapi.read_selection()
         if selection[0]:
             self.emulateRange(selection[1], selection[2], registers, stack, instructionHook, 
-                              callHook, hookData, skipCalls, hookApis, count=count)
+                              callHook, memAccessHook, hookData, skipCalls, hookApis, count=count)
 
     # target: finds first path through function to target using depth first
     #     search for each address in list, if a single address is specified,
@@ -144,14 +144,16 @@ class EmuHelper():
     #     "call" instruction. hook or no, after a call instruction, the
     #     program counter is advanced to the next instruction and the stack is
     #     automatically cleaned up
+    # memAccessHook: hook function that runs when the emulator encounters a
+    #     memory read or write
     # resetEmuMem: if set to True, unmaps all allocated emulator memory and
     #     reloads the binary from the IDB into emulator memory before each
     #     emulation run. can significantly increase script run time, defaults
     #     to False
     # hookApis: set to False if you don't want flare-emu to emulate common 
     # runtime memory and string functions, defaults to True
-    def iterate(self, target, targetCallback, preEmuCallback=None, callHook=None, instructionHook=None, hookData=None,
-                resetEmuMem=False, hookApis=True):
+    def iterate(self, target, targetCallback, preEmuCallback=None, callHook=None, instructionHook=None,
+                memAccessHook=None, hookData=None, resetEmuMem=False, hookApis=True):
         if target is None:
             return
 
@@ -198,6 +200,9 @@ class EmuHelper():
             unicorn.UC_HOOK_CODE, self._guidedHook, userData)
         if instructionHook:
             self.h_userhook = self.uc.hook_add(unicorn.UC_HOOK_CODE, instructionHook, userData)
+        if memAccessHook:
+            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, memAccessHook,
+                                                    userData)
         self.h_memhook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ_UNMAPPED | unicorn.UC_HOOK_MEM_WRITE_UNMAPPED |
                                           unicorn.UC_HOOK_MEM_FETCH_UNMAPPED, self._hookMemInvalid, userData)
         self.h_inthook = self.uc.hook_add(
@@ -248,7 +253,8 @@ class EmuHelper():
 
     # simply emulates to the end of whatever bytes are provided
     # these bytes are not loaded into IDB, only emulator memory; IDA APIs are not available for use in hooks here
-    def emulateBytes(self, bytes, registers=None, stack=None, baseAddr=0x400000, instructionHook=None, hookData=None):
+    def emulateBytes(self, bytes, registers=None, stack=None, baseAddr=0x400000, instructionHook=None,
+                     memAccessHook=None, hookData=None):
         if registers is None:
             registers = {}
         if stack is None:
@@ -266,6 +272,9 @@ class EmuHelper():
             unicorn.UC_HOOK_CODE, self._emulateBytesCodeHook, userData)
         if instructionHook:
             self.h_userhook = mu.hook_add(unicorn.UC_HOOK_CODE, instructionHook, userData)
+        if memAccessHook:
+            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, memAccessHook,
+                                                    userData)
         self.h_memhook = mu.hook_add(unicorn.UC_HOOK_MEM_READ_UNMAPPED | unicorn.UC_HOOK_MEM_WRITE_UNMAPPED |
                                      unicorn.UC_HOOK_MEM_FETCH_UNMAPPED, self._hookMemInvalid, userData)
         self.h_inthook = mu.hook_add(
