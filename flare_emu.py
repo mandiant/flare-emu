@@ -144,16 +144,16 @@ class EmuHelper():
     #     "call" instruction. hook or no, after a call instruction, the
     #     program counter is advanced to the next instruction and the stack is
     #     automatically cleaned up
-    # memAccessHook: hook function that runs when the emulator encounters a
-    #     memory read or write
     # resetEmuMem: if set to True, unmaps all allocated emulator memory and
     #     reloads the binary from the IDB into emulator memory before each
     #     emulation run. can significantly increase script run time, defaults
     #     to False
     # hookApis: set to False if you don't want flare-emu to emulate common 
     # runtime memory and string functions, defaults to True
+    # memAccessHook: hook function that runs when the emulator encounters a
+    #     memory read or write
     def iterate(self, target, targetCallback, preEmuCallback=None, callHook=None, instructionHook=None,
-                memAccessHook=None, hookData=None, resetEmuMem=False, hookApis=True):
+                hookData=None, resetEmuMem=False, hookApis=True, memAccessHook=None):
         if target is None:
             return
 
