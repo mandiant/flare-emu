@@ -20,6 +20,8 @@ import idaapi
 import idautils
 import flare_emu
 
+from unicorn import UC_ARCH_X86, UC_MEM_READ, UC_MEM_WRITE
+
 testStrings = ["HELLO", "GOODBYE", "TEST"]
 
 def decode(argv):
@@ -45,10 +47,62 @@ def iterateHook(eh, address, argv, userData):
         print("FAILED: printf getting wrong arguments @ %016X" % address)
     else:
         print("printf test passed")
-    
-    
-    
-if __name__ == '__main__':   
+
+
+def test_memory_access_hook():
+    """ Compare memory access identified in IDA and hooked instructions. """
+    print("\ntesting memory access hook")
+    main_va = idc.get_name_ea_simple("_main")
+    userData = dict()
+    userData["mov_types_hook"] = dict()
+    eh.emulateRange(main_va, memAccessHook=get_mov_types_hook, hookData=userData)
+    if get_mov_types_ida(main_va) != userData["mov_types_hook"]:
+        print("FAILED: memory access hook test. Memory access identified in IDA and hooked instructions differ.")
+    else:
+        print("memory access hook test passed")
+
+
+def get_mov_types_hook(uc, access, address, size, value, userData):
+    """
+    Return dictionary that maps addresses of all hooked mov instructions that read or write memory, other memory access
+    types are ignored
+    """
+    eh = userData["EmuHelper"]
+    pc = eh.getRegVal("pc")
+    if idc.print_insn_mnem(pc) != "mov":
+        # ignore other instructions
+        return
+    if access in [UC_MEM_READ, UC_MEM_WRITE]:
+        userData["mov_types_hook"][pc] = access
+
+
+def get_mov_types_ida(va):
+    """
+    Return dictionary that maps the addresses of all mov instructions for a function that read or write memory,
+    mov instruction without memory access are ignored
+    :param va: address in target function
+    :return: dict which maps address -> access type
+    """
+    mem_operand_types = [idaapi.o_mem, idaapi.o_phrase, idaapi.o_displ]
+    va = idc.get_func_attr(va, idc.FUNCATTR_START)
+    fend = idc.get_func_attr(va, idc.FUNCATTR_END)
+    mov_types = dict()
+    while va < fend:
+        i = idautils.DecodeInstruction(va)
+        if i and i.get_canon_mnem().lower() == "mov":
+            if i.Operands[0].type in mem_operand_types:
+                mov_types[va] = UC_MEM_WRITE
+            elif i.Operands[1].type in mem_operand_types:
+                mov_types[va] = UC_MEM_READ
+        va = idc.next_head(va)
+    return mov_types
+
+
+if __name__ == '__main__':
     eh = flare_emu.EmuHelper()
     print("testing iterate feature for printf function")
     eh.iterate(idc.get_name_ea_simple("_printf"), iterateHook, callHook = ch)
+
+    # currently only test on x86/AMD64
+    if eh.arch == UC_ARCH_X86:
+        test_memory_access_hook()
