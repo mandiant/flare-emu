@@ -86,35 +86,36 @@ The `iterateCallback` function receives the EmuHelper instance, named `eh` here,
 
 ## [Utility Functions](#utility)
 The following is an incomplete list of some of the useful utility functions provided by the `EmuHelper` class.
-`hexString(value)` - Returns a hexadecimal formatted string for the value. Useful for logging and print statements.
 
-`getIDBString(address)` - Returns the string of characters located at an address in the IDB, up to a null terminator. Characters are not necessarily printable. Useful for retrieving strings without an emulation context.
+* `hexString(value)` - Returns a hexadecimal formatted string for the value. Useful for logging and print statements.
 
-`skipInstruction(userData, useIDA=False)` - Call this from an emulation hook to skip the current instruction, moving the program counter to the next instruction. `useIDA` option was added to handle cases where IDA Pro folds multiple instructions into one pseudo instruction and you would like to skip all of them. This function cannot be called multiple times from a single instruction hook to skip multiple instructions. To skip multiple instructions, it is recommended not to write to the program counter directly if you are emulating ARM code as this might cause problems with thumb mode. Instead, try EmuHelper's `changeProgramCounter` API (described below).
+* `getIDBString(address)` - Returns the string of characters located at an address in the IDB, up to a null terminator. Characters are not necessarily printable. Useful for retrieving strings without an emulation context.
 
-`changeProgramCounter(userData, newAddress)` - Call this from an emulation hook to change the value of the program counter register. This API takes care of thumb mode tracking for the ARM architecture.
+* `skipInstruction(userData, useIDA=False)` - Call this from an emulation hook to skip the current instruction, moving the program counter to the next instruction. `useIDA` option was added to handle cases where IDA Pro folds multiple instructions into one pseudo instruction and you would like to skip all of them. This function cannot be called multiple times from a single instruction hook to skip multiple instructions. To skip multiple instructions, it is recommended not to write to the program counter directly if you are emulating ARM code as this might cause problems with thumb mode. Instead, try EmuHelper's `changeProgramCounter` API (described below).
 
-`getRegVal(registerName)` - Retrieves the value of the specified register, being sensitive to sub-register addressing. For example, "ax" will return the lower 16 bits of the EAX/RAX register in `x86`.
+* `changeProgramCounter(userData, newAddress)` - Call this from an emulation hook to change the value of the program counter register. This API takes care of thumb mode tracking for the ARM architecture.
 
-`stopEmulation(userData)` - Call this from an emulation hook to stop emulation. Use this instead of calling the `emu_stop` Unicorn API so that the `EmuHelper` object can handle bookkeeping related to the `iterate` feature.
+* `getRegVal(registerName)` - Retrieves the value of the specified register, being sensitive to sub-register addressing. For example, "ax" will return the lower 16 bits of the EAX/RAX register in `x86`.
 
-`getEmuString(address)` -  Returns the string of characters located at an address in the emulated memory, up to a null terminator. Characters are not necessarily printable.
+* `stopEmulation(userData)` - Call this from an emulation hook to stop emulation. Use this instead of calling the `emu_stop` Unicorn API so that the `EmuHelper` object can handle bookkeeping related to the `iterate` feature.
 
-`getEmuWideString(address)` -  Returns the string of "wide characters" located at an address in the emulated memory, up to a null terminator. "Wide characters" is meant loosely here to refer to any series of bytes containing a null byte every other byte, as would be the case for an ASCII string encoded in UTF-16 LE. Characters are not necessarily printable.
+* `getEmuString(address)` -  Returns the string of characters located at an address in the emulated memory, up to a null terminator. Characters are not necessarily printable.
 
-`getEmuBytes(address, length)` - Returns a string of bytes located at an address in the emulated memory.
+* `getEmuWideString(address)` -  Returns the string of "wide characters" located at an address in the emulated memory, up to a null terminator. "Wide characters" is meant loosely here to refer to any series of bytes containing a null byte every other byte, as would be the case for an ASCII string encoded in UTF-16 LE. Characters are not necessarily printable.
 
-`getEmuPtr(address)` - Returns the pointer value located at the given address.
+* `getEmuBytes(address, length)` - Returns a string of bytes located at an address in the emulated memory.
 
-`writeEmuPtr(address)` - Writes the pointer value at the given address in the emulated memory.
+* `getEmuPtr(address)` - Returns the pointer value located at the given address.
 
-`loadBytes(bytes, address=None)` - Allocates memory in the emulator and writes the bytes to it.
+* `writeEmuPtr(address)` - Writes the pointer value at the given address in the emulated memory.
 
-`isValidEmuPtr(address)` - Returns `True` if the provided address points to valid emulated memory.
+* `loadBytes(bytes, address=None)` - Allocates memory in the emulator and writes the bytes to it.
 
-`getEmuMemRegion(address)` - Returns a tuple containing the start and end address of memory region containing the provided address, or `None` if the address is not valid.
+* `isValidEmuPtr(address)` - Returns `True` if the provided address points to valid emulated memory.
 
-`getArgv()` - Call this from an emulation hook at a "call" type instruction to receive an array of the arguments to the function.
+* `getEmuMemRegion(address)` - Returns a tuple containing the start and end address of memory region containing the provided address, or `None` if the address is not valid.
+
+* `getArgv()` - Call this from an emulation hook at a "call" type instruction to receive an array of the arguments to the function.
 
 
 # [Learn More](#learn)
