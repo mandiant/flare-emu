@@ -37,7 +37,7 @@ ARMNOP = "\x00\xf0\x20\xe3"
 ARM64NOP = "\x1f\x20\x03\xd5"
 MAX_ALLOC_SIZE = 10 * 1024 * 1024
 MAXCODEPATHS = 20
-
+MAXNODESEARCH = 100000
 try:
     long        # Python 2
 except NameError:
@@ -551,9 +551,49 @@ class EmuHelper():
         for bb in flowchart:
             flow[bb.id] = (bb.start_ea, bb.end_ea)
         return flow, [path]
+        
+    # get up to maxPaths path to target
+    # for some complex functions, may give up before finding a path
+    def getPathsToTarget(self, targetVA, maxPaths=MAXCODEPATHS, maxNodes=MAXNODESEARCH):
+        function = idaapi.get_func(targetVA)
+        flowchart = idaapi.FlowChart(function)
+        target_bb = self.getBlockByVA(targetVA, flowchart)
+        start_bb = self.getStartBB(function, flowchart)
+        if target_bb.id != 0:
+            if self.verbose > 0:
+                logging.debug("exploring function with %d blocks" % flowchart.size)
+            graph = self._explore(start_bb)
+            if graph is None:
+                logging.debug(
+                    "graph for target %s could not be traversed, skipping" % self.hexString(targetVA))
+                return None, None
+
+            if self.verbose > 0:
+                logging.debug("graph for target:\n%s" % repr(graph))
+             
+            path = [0]
+            paths = []
+            targets = [target_bb.id]
+            self._findPathsFromGraph(paths, path, graph, 0, targets, maxPaths, 0 , maxNodes)
+            if len(paths) == 0:
+                logging.debug(
+                    "path for target %s could not be discovered, skipping" % self.hexString(targetVA))
+                return None, None
+        else:
+            paths = [[0]]
+
+        if self.verbose > 0:
+            logging.debug("code paths to target: %s" % repr(paths))
+
+        # create my own idaapi.FlowChart object so it can be pickled for debugging purposes
+        flow = {}
+        for bb in flowchart:
+            flow[bb.id] = (bb.start_ea, bb.end_ea)
+        return flow, paths
 
     # get up to maxPaths paths from function start to any terminating basic block
-    def getPaths(self, fva, maxPaths):
+    # for some complex functions, may give up before finding a path
+    def getPaths(self, fva, maxPaths=MAXCODEPATHS, maxNodes=MAXNODESEARCH):
         function = idaapi.get_func(fva)
         flowchart = idaapi.FlowChart(function)
         term_bbs_ids = [bb.id for bb in self.getTerminatingBBs(flowchart)]
@@ -572,7 +612,7 @@ class EmuHelper():
 
             path = [0]
             paths = []
-            self._findPathsFromGraph(paths, path, graph, 0, term_bbs_ids, maxPaths)
+            self._findPathsFromGraph(paths, path, graph, 0, term_bbs_ids, maxPaths, 0, maxNodes)
             if len(paths) == 0:
                 logging.debug(
                     "paths for target %s could not be discovered, skipping" % self.hexString(fva))
@@ -2307,11 +2347,14 @@ class EmuHelper():
         
     # recursively searches control flow graph dict returned by _explore for 
     # up to maxPaths from currentNode to basic blocks in targets list, check paths parameter upon return
-    def _findPathsFromGraph(self, paths, path, graph, currentNode, targets, maxPaths=MAXCODEPATHS):
+    def _findPathsFromGraph(self, paths, path, graph, currentNode, targets, maxPaths, searchedNodes, maxNodes):
+        if searchedNodes == 0:
+            self.searchedNodes = 0
         if currentNode not in graph:
             return
-        if len(paths) >= maxPaths:
+        if len(paths) >= maxPaths or self.searchedNodes >= maxNodes:
             return
+        self.searchedNodes += 1
         for node in graph[currentNode]:
             if node in path:
                 continue
@@ -2320,7 +2363,7 @@ class EmuHelper():
                 paths.append(deepcopy(path))
                 path.pop()
                 return
-            self._findPathsFromGraph(paths, path, graph, node, targets, maxPaths)
+            self._findPathsFromGraph(paths, path, graph, node, targets, maxPaths, self.searchedNodes, maxNodes)
             path.pop()
         
     # returns a dictionary where the key is a node in the control flow graph 
