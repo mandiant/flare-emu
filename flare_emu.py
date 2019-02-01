@@ -552,6 +552,50 @@ class EmuHelper():
             flow[bb.id] = (bb.start_ea, bb.end_ea)
         return flow, [path]
 
+    # get up to maxPaths paths from function start to any terminating basic block
+    def getPaths(self, fva, maxPaths):
+        function = idaapi.get_func(fva)
+        flowchart = idaapi.FlowChart(function)
+        term_bbs_ids = [bb.id for bb in self.getTerminatingBBs(flowchart)]
+        start_bb = self.getStartBB(function, flowchart)
+        if term_bbs_ids != [0]:
+            if self.verbose > 0:
+                logging.debug("exploring function with %d blocks" % flowchart.size)
+            graph = self._explore(start_bb)
+            if graph is None:
+                logging.debug(
+                    "graph for target %s could not be traversed, skipping" % self.hexString(fva))
+                return None, None
+
+            if self.verbose > 0:
+                logging.debug("graph for target:\n%s" % repr(graph))
+
+            path = [0]
+            paths = []
+            self._findPathsFromGraph(paths, path, graph, 0, term_bbs_ids, maxPaths)
+            if len(paths) == 0:
+                logging.debug(
+                    "paths for target %s could not be discovered, skipping" % self.hexString(fva))
+                return None, None
+        else:
+            paths = [[0]]
+
+        if self.verbose > 0:
+            logging.debug("code paths to target: %s" % repr(paths))
+
+        # create my own idaapi.FlowChart object so it can be pickled for debugging purposes
+        flow = {}
+        for bb in flowchart:
+            flow[bb.id] = (bb.start_ea, bb.end_ea)
+        return flow, paths
+
+    def getTerminatingBBs(self, flowchart):
+        term_bbs = []
+        for bb in flowchart:
+            if self.isTerminatingBB(bb):
+                term_bbs.append(bb)
+        return term_bbs
+
     def getStartBB(self, function, flowchart):
         for bb in flowchart:
             if bb.start_ea == function.start_ea:
@@ -2262,8 +2306,8 @@ class EmuHelper():
         return False
         
     # recursively searches control flow graph dict returned by _explore for 
-    # up to maxPaths from currentNode to target basic block, check paths parameter upon return
-    def _findPathsFromGraph(self, paths, path, graph, currentNode, target, maxPaths=MAXCODEPATHS):
+    # up to maxPaths from currentNode to basic blocks in targets list, check paths parameter upon return
+    def _findPathsFromGraph(self, paths, path, graph, currentNode, targets, maxPaths=MAXCODEPATHS):
         if currentNode not in graph:
             return
         if len(paths) >= maxPaths:
@@ -2272,11 +2316,11 @@ class EmuHelper():
             if node in path:
                 continue
             path.append(node)
-            if node == target:
+            if node in targets:
                 paths.append(deepcopy(path))
                 path.pop()
                 return
-            self._findPathsFromGraph(paths, path, graph, node, target)
+            self._findPathsFromGraph(paths, path, graph, node, targets, maxPaths)
             path.pop()
         
     # returns a dictionary where the key is a node in the control flow graph 
