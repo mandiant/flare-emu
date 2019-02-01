@@ -36,6 +36,7 @@ ARMTHUMBNOP = "\x00\xbf"
 ARMNOP = "\x00\xf0\x20\xe3"
 ARM64NOP = "\x1f\x20\x03\xd5"
 MAX_ALLOC_SIZE = 10 * 1024 * 1024
+MAXCODEPATHS = 20
 
 try:
     long        # Python 2
@@ -515,65 +516,33 @@ class EmuHelper():
     def pageAlign(self, addr):
         return addr & 0xfffffffffffff000
 
-    # uses depth first searching on IDA's idaapi.FlowChart in a given target's function to find up to maxPaths possible
-    # ways to target from function start
-    # this will return an empty list if there are no branches in function
-    # returns IDA's idaapi.FlowChart object, converted to a Python list of tuples, as well as a list of lists
-    # containing paths to targets in the form of basic block IDs
-    def getPaths(self, targetVA, maxPaths):
-        function = idaapi.get_func(targetVA)
-        flowchart = idaapi.FlowChart(function)
-        target_bb = self.getBlockIdByVA(targetVA, flowchart)
-        if function.start_ea in self.paths:
-            paths = self.paths[function.start_ea]
-        else:
-            start_bb = self.getStartBB(function, flowchart)
-            logging.debug("exploring function with %d blocks" % flowchart.size)
-            self._explore(start_bb)
-            self.explorePaths.pop()
-            paths = deepcopy(self.explorePaths)
-            del(self.explorePaths)
-            self.paths[function.start_ea] = paths
-        targetPaths = []
-        for p in paths:
-            if target_bb in p:
-                targetPaths.append(p)
-
-        # truncate paths to target bb
-        for i in range(len(targetPaths)):
-            targetPaths[i] = targetPaths[i][:targetPaths[i].index(
-                target_bb) + 1]
-
-        # unique list of paths
-        uniqTargetPaths = []
-        for p in targetPaths:
-            if p not in uniqTargetPaths:
-                uniqTargetPaths.append(p)
-        uniqTargetPaths = uniqTargetPaths[:maxPaths]
-        logging.debug("code paths to target: %s" % repr(uniqTargetPaths))
-
-        # create my own idaapi.FlowChart object so it can be pickled for debugging purposes
-        flow = {}
-        for bb in flowchart:
-            flow[bb.id] = (bb.start_ea, bb.end_ea)
-        return flow, uniqTargetPaths
-
-    # same as getPaths, but only get first path to target found during exploration
+    
+    # get first path to target found during exploration
     def getPath(self, targetVA):
         function = idaapi.get_func(targetVA)
         flowchart = idaapi.FlowChart(function)
-        target_bb = self.getBlockIdByVA(targetVA, flowchart)
+        target_bb = self.getBlockByVA(targetVA, flowchart)
         start_bb = self.getStartBB(function, flowchart)
-        if self.verbose > 0:
-            logging.debug("exploring function with %d blocks" % flowchart.size)
-        idx = self._explore(start_bb, target_bb)
-        if idx is None:
-            logging.debug(
-                "path to target %s could not be found, skipping" % self.hexString(targetVA))
-            return None, None
+        if target_bb.id != 0:
+            if self.verbose > 0:
+                logging.debug("exploring function with %d blocks" % flowchart.size)
+            graph = self._explore(start_bb, target_bb)
+            if graph is None:
+                logging.debug(
+                    "graph for target %s could not be traversed, skipping" % self.hexString(targetVA))
+                return None, None
 
-        path = deepcopy(self.explorePaths[idx])
-        del(self.explorePaths)
+            if self.verbose > 0:
+                logging.debug("graph for target:\n%s" % repr(graph))
+                
+            path = [0]
+            if not self._findPathFromGraph(path, graph, 0, target_bb.id):
+                logging.debug(
+                    "path for target %s could not be discovered, skipping" % self.hexString(targetVA))
+                return None, None
+        else:
+            path = [0]
+
         if self.verbose > 0:
             logging.debug("code path to target: %s" % repr(path))
 
@@ -594,6 +563,11 @@ class EmuHelper():
     def getBlockByVA(self, targetVA, flowchart):
         for bb in flowchart:
             if targetVA >= bb.start_ea and targetVA < bb.end_ea:
+                return bb
+                
+    def getBlockById(self, id, flowchart):
+        for bb in flowchart:
+            if bb.id == id:
                 return bb
 
     def isTerminatingBB(self, bb):
@@ -2269,48 +2243,62 @@ class EmuHelper():
                    (self.uc.reg_read(self.regs[idc.print_operand(userData["currAddr"], 0)])) == ""):
                     logging.debug("bad branch detected @%s" % self.hexString(userData["currAddr"]))
                     return True
-
-    # returns a list of lists containing all possible paths through a function as basic block ids
-    # or returns the index of a single list for the first path found leading to end_bb
+    
+    # recursively searches control flow graph dict returned by _explore for a  
+    # single path from currentNode to target basic block, check path parameter upon return
+    def _findPathFromGraph(self, path, graph, currentNode, target):
+        if currentNode not in graph:
+            return False
+        for node in graph[currentNode]:
+            if node in path:
+                continue
+            path.append(node)
+            if node == target:
+                return True
+            if self._findPathFromGraph(path, graph, node, target):
+                return True
+            else:
+                path.pop()
+        return False
+        
+    # recursively searches control flow graph dict returned by _explore for 
+    # up to maxPaths from currentNode to target basic block, check paths parameter upon return
+    def _findPathsFromGraph(self, paths, path, graph, currentNode, target, maxPaths=MAXCODEPATHS):
+        if currentNode not in graph:
+            return
+        if len(paths) >= maxPaths:
+            return
+        for node in graph[currentNode]:
+            if node in path:
+                continue
+            path.append(node)
+            if node == target:
+                paths.append(deepcopy(path))
+                path.pop()
+                return
+            self._findPathsFromGraph(paths, path, graph, node, target)
+            path.pop()
+        
+    # returns a dictionary where the key is a node in the control flow graph 
+    # and its value is a list of its successor nodes
     def _explore(self, start_bb, end_bb=None):
-        if hasattr(self, 'explorePaths') is False:
-            self.explorePaths = [[]]
-            self.explorePathIdx = 0
-
-        # set_cmt(start_bb.start_ea, "%d" % start_bb.id, 0)
-
-        # optional target bb found, back out
-        if end_bb is not None and end_bb == start_bb.id:
-            self.explorePaths[self.explorePathIdx].append(start_bb.id)
-            return self.explorePathIdx
-
-        # handle loops by treating them like a terminating bb
-        if start_bb.id in self.explorePaths[self.explorePathIdx]:
-            # forging a new path
-            self.explorePaths.append(
-                deepcopy(self.explorePaths[self.explorePathIdx]))
-            self.explorePathIdx += 1
-            return None
-
-        # add this bb to our list
-        self.explorePaths[self.explorePathIdx].append(start_bb.id)
-
-        # if we are a terminating bb stop recursing
-        if self.isTerminatingBB(start_bb):
-            # forging a new path
-            self.explorePaths.append(
-                deepcopy(self.explorePaths[self.explorePathIdx]))
-            self.explorePathIdx += 1
-            self.explorePaths[self.explorePathIdx].pop()
-            return None
-
-        # visit successor bbs
-        for w in start_bb.succs():
-            r = self._explore(w, end_bb)
-            if r is not None:
-                return r
-        self.explorePaths[self.explorePathIdx].pop()
-
+        stack = []
+        discovered = []
+        graph = {}
+        stack.append(start_bb)
+        while len(stack) > 0:
+            bb = stack.pop()
+            if bb.id not in discovered:
+                discovered.append(bb.id)
+                graph[bb.id] = []
+                for block in bb.succs():
+                    stack.append(block)
+                    graph[bb.id].append(block.id)
+                    if end_bb is not None and block.id == end_bb.id:
+                        return graph
+                    
+        return graph
+    
     def _findUnusedMemRegion(self):
         # start at 0x10000 to avoid collision with null mem references during emulation
         highest = 0x10000
