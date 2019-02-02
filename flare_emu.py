@@ -252,6 +252,105 @@ class EmuHelper():
 
             cnt += 1
 
+    # fva: iterates paths through a function
+    # targetCallback: a callback that is called when target (function end)
+    #     is hit, providing arguments and userData
+    # preEmuCallback: a callback that is called BEFORE each emulation run
+    # callHook: a callback that is called whenever the emulator encounters a
+    #     "call" instruction. hook or no, after a call instruction, the
+    #     program counter is advanced to the next instruction and the stack is
+    #     automatically cleaned up
+    # instructionHook: user-defined instruction hook to run AFTER guidedHook that
+    #     forces execution
+    # hookData: user-defined data to be made available in instruction hook
+    #     function, care must be taken to not use key names already used by
+    #     flare_emu in userData dictionary
+    # resetEmuMem: if set to True, unmaps all allocated emulator memory and
+    #     reloads the binary from the IDB into emulator memory before each
+    #     emulation run. can significantly increase script run time, defaults
+    #     to False
+    # hookApis: set to False if you don't want flare-emu to emulate common
+    #     runtime memory and string functions, defaults to True
+    # memAccessHook: hook function that runs when the emulator encounters a
+    #     memory read or write
+    # maxPaths: maximum number of paths to discover and emulate for a function
+    # maxNodes: maximum number of nodes to go through before giving up
+    def iterateAllPaths(self, fva, targetCallback, preEmuCallback=None, callHook=None, instructionHook=None,
+                        hookData=None, resetEmuMem=False, hookApis=True, memAccessHook=None, maxPaths=MAXCODEPATHS,
+                        maxNodes=MAXNODESEARCH):
+        function = idaapi.get_func(fva)
+        flowchart = idaapi.FlowChart(function)
+        # targets are all function ends
+        targets = [idc.prev_head(bb.end_ea) for bb in self.getTerminatingBBs(flowchart)]
+
+        targetInfo = {}
+        for i, t in enumerate(targets):
+            logging.debug("getting paths to %s, %d of %d targets" %
+                          (self.hexString(t), i + 1, len(targets)))
+            flow, paths = self.getPathsToTarget(t, maxPaths, maxNodes)
+            if flow and paths:
+                targetInfo[t] = (flow, paths)
+        if len(targetInfo) <= 0:
+            logging.debug("no targets to iterate")
+            return
+
+        userData = {}
+        userData["targetInfo"] = targetInfo
+        userData["targetCallback"] = targetCallback
+        userData["callHook"] = callHook
+        userData["EmuHelper"] = self
+        userData["hookApis"] = hookApis
+        if hookData:
+            userData.update(hookData)
+        self.internalRun = False
+        self.resetEmuHooks()
+        self.h_codehook = self.uc.hook_add(
+            unicorn.UC_HOOK_CODE, self._guidedHook, userData)
+        if instructionHook:
+            self.h_userhook = self.uc.hook_add(unicorn.UC_HOOK_CODE, instructionHook, userData)
+        if memAccessHook:
+            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, memAccessHook,
+                                                    userData)
+        self.h_memhook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ_UNMAPPED | unicorn.UC_HOOK_MEM_WRITE_UNMAPPED |
+                                          unicorn.UC_HOOK_MEM_FETCH_UNMAPPED, self._hookMemInvalid, userData)
+        self.h_inthook = self.uc.hook_add(
+            unicorn.UC_HOOK_INTR, self._hookInterrupt, userData)
+        self.blockIdx = 0
+        cnt = 1
+
+        for targetVA in sorted(userData["targetInfo"].keys(), reverse=True):
+            userData["targetVA"] = targetVA
+            flow, paths = userData["targetInfo"][targetVA]
+            funcStart = flow[0][0]
+            userData["func_t"] = idaapi.get_func(funcStart)
+            self.pathIdx = 0
+            numTargets = len(userData["targetInfo"])
+            logging.debug("run #%d, %d targets remaining: %s (%d paths)" % (
+            cnt, numTargets, self.hexString(targetVA), len(paths)))
+            cnt2 = 1
+            numPaths = len(paths)
+            for path in paths:
+                logging.debug("emulating path #%d of %d from %s to %s via basic blocks: %s" % (
+                    cnt2, numPaths, self.hexString(funcStart), self.hexString(targetVA), repr(path)))
+                for reg in self.regs:
+                    self.uc.reg_write(self.regs[reg], 0)
+                if resetEmuMem:
+                    self.reloadBinary()
+                self.uc.reg_write(self.regs["sp"], self.stack)
+                self.enteredBlock = False
+                userData["visitedTargets"] = []
+                if preEmuCallback:
+                    preEmuCallback(self, userData, funcStart)
+                if self.arch == unicorn.UC_ARCH_ARM:
+                    userData["changeThumbMode"] = True
+
+                self.uc.emu_start(funcStart, idc.get_func_attr(
+                    funcStart, idc.FUNCATTR_END))
+                self.pathIdx += 1
+                self.blockIdx = 0
+                cnt2 += 1
+            cnt += 1
+
     # simply emulates to the end of whatever bytes are provided
     # these bytes are not loaded into IDB, only emulator memory; IDA APIs are not available for use in hooks here
     def emulateBytes(self, bytes, registers=None, stack=None, baseAddr=0x400000, instructionHook=None,
