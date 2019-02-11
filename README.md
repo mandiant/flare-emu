@@ -54,7 +54,7 @@ The `iterateCallback` function receives the EmuHelper instance, named `eh` here,
 `decrypt` creates a second instance of `EmuHelper` that is used to emulate the `decryptString` function itself, which will decrypt the string for us. The prototype of this `decryptString` function is as follows: `char * decryptString(char *text, int textLength, char *key, int keyLength)`. It simply decrypts the string in place. Our `decrypt` function passes in the arguments as received by the `iterateCallback` function to our call to `EmuHelper`'s `emulateRange` API. Since this is an `x86_64` binary, the calling convention uses registers to pass arguments and not the stack. `flare-emu` automatically determines which registers represent which arguments based on the architecture and file format of the binary as determined by IDA Pro, allowing you to write at least somewhat architecture agnostic code. If this were 32-bit `x86`, you would use the `stack` argument to pass the arguments instead, like so: `myEH.emulateRange(idc.get_name_ea_simple("decryptString"), stack = [0, argv[0], argv[1], argv[2], argv[3]])`. The first stack value is the return address in `x86`, so we just use `0` as a placeholder value here. Once emulation is complete, we call the `getEmuString` API to retrieve the null-terminated string stored in the memory location pointed to by the first argument passed to the function.
 
 ## [Emulation Functions](#emulationfuncs)
-`emulateRange(startAddress, endAddress=None, registers=None, stack=None, instructionHook=None, callHook=None, memAccessHook=None, userData=None, skipCalls=True, hookApis=True, count=0)` - Emulates the range of instructions starting at `startAddress` and ending at `endAddress`, not including the instruction at `endAddress`. If endAddress is `None`, emulation stops when a "return" type instruction is encountered within the same function that emulation began. 
+`emulateRange(startAddress, endAddress=None, registers=None, stack=None, instructionHook=None, callHook=None, memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, count=0)` - Emulates the range of instructions starting at `startAddress` and ending at `endAddress`, not including the instruction at `endAddress`. If endAddress is `None`, emulation stops when a "return" type instruction is encountered within the same function that emulation began. 
 
 * `registers` is a dictionary with keys being register names and values being register values. Some special register names are created by `flare-emu` and can be used here, such as `arg1`, `arg2`, etc., `ret`, and `pc`. 
 
@@ -64,7 +64,7 @@ The `iterateCallback` function receives the EmuHelper instance, named `eh` here,
 
 * `callHook` can be a function you define to be called whenever a "call" type instruction is encountered during emulation. It has the following prototype: `callHook(address, arguments, functionName, userData)`.
 
-* `userData` is a dictionary containing user-defined data to be made available to your hook functions. It is a means to persist data throughout the emulation. `flare-emu` also uses this dictionary for its own purposes, so care must be taken not to define a key already defined.
+* `hookData` is a dictionary containing user-defined data to be made available to your hook functions. It is a means to persist data throughout the emulation. `flare-emu` also uses this dictionary for its own purposes, so care must be taken not to define a key already defined. This variable is often named `userData` in user-defined hook functions due to its naming in Unicorn.
 
 * `skipCalls` will cause the emulator to skip over "call" type instructions and adjust the stack accordingly, defaults to `True`.
 
@@ -74,7 +74,7 @@ The `iterateCallback` function receives the EmuHelper instance, named `eh` here,
 
 * `count` is the maximum number of instructions to emulate, defaults to `0` which means no limit.
 
-`iterate(target, targetCallback, preEmuCallback=None, callHook=None, instructionHook=None, userData=None, resetEmuMem=False, hookApis=True, memAccessHook=None)` - For each target specified by `target`, a separate emulation is performed from the beginning of the containing function up to the target address. Emulation will be forced down the branches necessary to reach each target. `target` can be the address of a function, in which case the target list is populated with all the cross-references to the specified function. Or, `target` can be an explicit list of targets.
+`iterate(target, targetCallback, preEmuCallback=None, callHook=None, instructionHook=None, hookData=None, resetEmuMem=False, hookApis=True, memAccessHook=None)` - For each target specified by `target`, a separate emulation is performed from the beginning of the containing function up to the target address. Emulation will be forced down the branches necessary to reach each target. `target` can be the address of a function, in which case the target list is populated with all the cross-references to the specified function. Or, `target` can be an explicit list of targets.
 
 * `targetCallback` is a function you create that will be called by `flare-emu` for each target that is reached during emulation. It has the following prototype: `instructionHook(emuHelper, address, arguments, userData)`.
 
@@ -82,7 +82,7 @@ The `iterateCallback` function receives the EmuHelper instance, named `eh` here,
 
 * `resetEmuMem` will cause `flare-emu` to reset the emulation memory before emulation of each target begins, defaults to `False`.
 
-`emulateBytes(bytes, registers=None, stack=None, baseAddress=0x400000, instructionHook=None, userData=None)` - Writes the code contained in `bytes` to emulation memory at `baseAddress` if possible and emulates the instructions from the beginning to the end of `bytes`. 
+`emulateBytes(bytes, registers=None, stack=None, baseAddress=0x400000, instructionHook=None, hookData=None)` - Writes the code contained in `bytes` to emulation memory at `baseAddress` if possible and emulates the instructions from the beginning to the end of `bytes`. 
 
 ## [Utility Functions](#utility)
 The following is an incomplete list of some of the useful utility functions provided by the `EmuHelper` class.
