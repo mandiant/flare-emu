@@ -4,13 +4,15 @@
 
 **flare-emu** marries [IDA Pro](https://www.hex-rays.com/products/ida/)’s binary analysis capabilities with [Unicorn](https://www.unicorn-engine.org/)’s emulation framework to provide the user with an easy to use and flexible interface for scripting emulation tasks. It is designed to handle all the housekeeping of setting up a flexible and robust emulator for its supported architectures so that you can focus on solving your code analysis problems. Currently, **flare-emu** supports the `x86`, `x86_64`, `ARM`, and `ARM64` architectures.
 
-It currently provides three different interfaces to serve your emulation needs, along with a slew of related helper and utility functions.
+It currently provides four different interfaces to serve your emulation needs, along with a slew of related helper and utility functions.
 
 1.	`emulateRange` – This API is used to emulate a range of instructions, or a function, within a user-specified context. It provides options for user-defined hooks for both individual instructions and for when “call” instructions are encountered. The user can decide whether the emulator will skip over, or call into function calls. This interface provides an easy way for the user to specify values for given registers and stack arguments. If a bytestring is specified, it is written to the emulator’s memory and the pointer is written to the register or stack variable. After emulation, the user can make use of `flare-emu`’s utility functions to read data from the emulated memory or registers, or use the Unicorn emulation object that is returned for direct probing. A small wrapper function for `emulateRange`, named `emulateSelection`, can be used to emulate the range of instructions currently highlighted in IDA Pro. 
 
 2. `iterate` - This API is used to force emulation down specific branches within a function in order to reach a given target. The user can specify a list of target addresses, or the address of a function from which a list of cross-references to the function is used as the targets, along with a callback for when a target is reached. The targets will be reached, regardless of conditions during emulation that may have caused different branches to be taken. Like the `emulateRange` API, options for user-defined hooks for both individual instructions and for when “call” instructions are encountered are provided. An example use of the iterate API is to achieve something similar to what our [argtracker](https://www.fireeye.com/blog/threat-research/2015/11/flare_ida_pro_script.html) tool does.
 
-3. `emulateBytes` – This API provides a way to simply emulate a blob of extraneous shellcode. The provided bytes are not added to the IDB and are simply emulated as is. This can be useful for preparing the emulation environment. For example, `flare-emu` itself uses this API to manipulate a Model Specific Register (MSR) for the `ARM64` CPU that is not exposed by Unicorn in order to enable Vector Floating Point (VFP) instructions and register access. The Unicorn emulation object is returned for further probing by the user.
+3. `iterateAllPaths` - This API is much like `iterate`, except that instead of providing a target address or addresses, you provide a target function that it will attempt to find all paths through and emulate. This is useful when you are performing code analysis that wants to reach every basic block of a function.
+
+4. `emulateBytes` – This API provides a way to simply emulate a blob of extraneous shellcode. The provided bytes are not added to the IDB and are simply emulated as is. This can be useful for preparing the emulation environment. For example, `flare-emu` itself uses this API to manipulate a Model Specific Register (MSR) for the `ARM64` CPU that is not exposed by Unicorn in order to enable Vector Floating Point (VFP) instructions and register access. The Unicorn emulation object is returned for further probing by the user.
 
 ## [Installation](#installation)
 To install `flare-emu`, simply drop it in your IDA Pro's `python` directory and import it as a module in your IDApython scripts. `flare-emu` depends on [Unicorn](https://www.unicorn-engine.org/) and its Python bindings.
@@ -81,6 +83,12 @@ The `iterateCallback` function receives the EmuHelper instance, named `eh` here,
 * `preEmuCallback` is a function you create that will be called before emulation for each target begins. You can implement some setup code here if needed.
 
 * `resetEmuMem` will cause `flare-emu` to reset the emulation memory before emulation of each target begins, defaults to `False`.
+
+`iterateAllPaths(target, targetCallback, preEmuCallback=None, callHook=None, instructionHook=None, hookData=None, resetEmuMem=False, hookApis=True, memAccessHook=None, maxPaths=MAXCODEPATHS, maxNodes=MAXNODESEARCH)` - For the function containing the address `target`, a separate emulation is performed for each discovered path through it, up to `maxPaths`.
+
+* `maxPaths` - the max number of paths through the function that will be searched for and emulated. Some of the more complex functions can cause the graph search function to take a very long time or never finish; tweak this parameter to meet your needs in a reasonable amount of time.
+
+* `maxNodes` - the max number of basic blocks that will be searched when finding paths through the target function. This is a safety measure to prevent unreasonable search times and hangs and likely does not need to be changed.
 
 `emulateBytes(bytes, registers=None, stack=None, baseAddress=0x400000, instructionHook=None, hookData=None)` - Writes the code contained in `bytes` to emulation memory at `baseAddress` if possible and emulates the instructions from the beginning to the end of `bytes`. 
 
