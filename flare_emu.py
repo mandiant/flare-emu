@@ -195,7 +195,6 @@ class EmuHelper():
         userData["hookApis"] = hookApis
         if hookData:
             userData.update(hookData)
-        self.internalRun = False
         self.resetEmuHooks()
         self.h_codehook = self.uc.hook_add(
             unicorn.UC_HOOK_CODE, self._guidedHook, userData)
@@ -252,7 +251,7 @@ class EmuHelper():
 
             cnt += 1
 
-    # fva: iterates paths through a function
+    # target: iterates paths through a function
     # targetCallback: a callback that is called when target (function end)
     #     is hit, providing arguments and userData
     # preEmuCallback: a callback that is called BEFORE each emulation run
@@ -275,10 +274,10 @@ class EmuHelper():
     #     memory read or write
     # maxPaths: maximum number of paths to discover and emulate for a function
     # maxNodes: maximum number of nodes to go through before giving up
-    def iterateAllPaths(self, fva, targetCallback, preEmuCallback=None, callHook=None, instructionHook=None,
+    def iterateAllPaths(self, target, targetCallback, preEmuCallback=None, callHook=None, instructionHook=None,
                         hookData=None, resetEmuMem=False, hookApis=True, memAccessHook=None, maxPaths=MAXCODEPATHS,
                         maxNodes=MAXNODESEARCH):
-        function = idaapi.get_func(fva)
+        function = idaapi.get_func(target)
         flowchart = idaapi.FlowChart(function)
         # targets are all function ends
         targets = [idc.prev_head(bb.end_ea) for bb in self.getTerminatingBBs(flowchart)]
