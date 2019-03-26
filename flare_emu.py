@@ -27,6 +27,7 @@ from copy import deepcopy
 import logging
 import struct
 import re
+import flare_emu_hooks
 
 IDADIR = idc.idadir()
 PAGESIZE = 0x1000
@@ -1040,107 +1041,107 @@ class EmuHelper():
 
         # naive API hooks
         self.apiHooks = {}
-        self.apiHooks["GetProcessHeap"] = self._returnHandleHook
-        self.apiHooks["HeapCreate"] = self._returnHandleHook
-        self.apiHooks["HeapAlloc"] = self._allocMem3Hook
-        self.apiHooks["HeapReAlloc"] = self._heapReAllocHook
-        self.apiHooks["RtlAllocateHeap"] = self._allocMem3Hook
-        self.apiHooks["AllocateHeap"] = self._allocMem1Hook
+        self.apiHooks["GetProcessHeap"] = flare_emu_hooks._returnHandleHook
+        self.apiHooks["HeapCreate"] = flare_emu_hooks._returnHandleHook
+        self.apiHooks["HeapAlloc"] = flare_emu_hooks._allocMem3Hook
+        self.apiHooks["HeapReAlloc"] = flare_emu_hooks._heapReAllocHook
+        self.apiHooks["RtlAllocateHeap"] = flare_emu_hooks._allocMem3Hook
+        self.apiHooks["AllocateHeap"] = flare_emu_hooks._allocMem1Hook
         
         # ignore LMEM_MOVEABLE flag, return mem ptr anyway, have Lock return ptr param
-        self.apiHooks["LocalAlloc"] = self._allocMem2Hook
-        self.apiHooks["LocalLock"] = self._returnParam1Hook
-        self.apiHooks["GlobalAlloc"] = self._allocMem2Hook
-        self.apiHooks["GlobalLock"] = self._returnParam1Hook
+        self.apiHooks["LocalAlloc"] = flare_emu_hooks._allocMem2Hook
+        self.apiHooks["LocalLock"] = flare_emu_hooks._returnParam1Hook
+        self.apiHooks["GlobalAlloc"] = flare_emu_hooks._allocMem2Hook
+        self.apiHooks["GlobalLock"] = flare_emu_hooks._returnParam1Hook
         
         # these ignore flags for now
-        self.apiHooks["LocalReAlloc"] = self._reallocHook
-        self.apiHooks["GlobalReAlloc"] = self._reallocHook
+        self.apiHooks["LocalReAlloc"] = flare_emu_hooks._reallocHook
+        self.apiHooks["GlobalReAlloc"] = flare_emu_hooks._reallocHook
         
-        self.apiHooks["VirtualAlloc"] = self._virtualAllocHook
-        self.apiHooks["VirtualAllocEx"] = self._virtualAllocExHook
-        self.apiHooks["malloc"] = self._allocMem1Hook
-        self.apiHooks["calloc"] = self._callocHook
-        self.apiHooks["realloc"] = self._reallocHook
-        self.apiHooks["memcpy"] = self._memcpyHook
-        self.apiHooks["memmove"] = self._memcpyHook
-        self.apiHooks["strlen"] = self._strlenHook
-        self.apiHooks["lstrlenA"] = self._strlenHook
-        self.apiHooks["strnlen"] = self._strnlenHook
-        self.apiHooks["strnlen_s"] = self._strnlenHook
-        self.apiHooks["strcmp"] = self._strcmpHook
-        self.apiHooks["lstrcmpA"] = self._strcmpHook
-        self.apiHooks["strncmp"] = self._strncmpHook
-        self.apiHooks["stricmp"] = self._stricmpHook
-        self.apiHooks["lstrcmpiA"] = self._stricmpHook
-        self.apiHooks["strnicmp"] = self._strnicmpHook
-        self.apiHooks["wcscmp"] = self._wcscmpHook
-        self.apiHooks["lstrcmpW"] = self._wcscmpHook
-        self.apiHooks["wcsncmp"] = self._wcsncmpHook
-        self.apiHooks["wcsicmp"] = self._wcsicmpHook
-        self.apiHooks["lstrcmpiW"] = self._wcsicmpHook
-        self.apiHooks["wcsnicmp"] = self._wcsnicmpHook
-        self.apiHooks["mbscmp"] = self._strcmpHook
-        self.apiHooks["mbsncmp"] = self._strncmpHook
-        self.apiHooks["mbsicmp"] = self._stricmpHook
-        self.apiHooks["mbsnicmp"] = self._strnicmpHook
-        self.apiHooks["strcpy"] = self._strcpyHook
-        self.apiHooks["strncpy"] = self._strncpyHook
-        self.apiHooks["lstrcpyA"] = self._strcpyHook
-        self.apiHooks["lstrcpynA"] = self._strncpyHook
-        self.apiHooks["strncpy_s"] = self._strncpysHook
-        self.apiHooks["wcscpy"] = self._wcscpyHook
-        self.apiHooks["wcsncpy"] = self._wcsncpyHook
-        self.apiHooks["lstrcpyW"] = self._wcscpyHook
-        self.apiHooks["lstrcpynW"] = self._wcsncpyHook
-        self.apiHooks["wcsncpy_s"] = self._wcsncpysHook
-        self.apiHooks["mbscpy"] = self._strcpyHook
-        self.apiHooks["mbsncpy"] = self._strncpyHook
-        self.apiHooks["mbsncpy_s"] = self._strncpysHook
-        self.apiHooks["memchr"] = self._memchrHook
-        self.apiHooks["strchr"] = self._strchrHook
-        self.apiHooks["wcschr"] = self._wcschrHook
-        self.apiHooks["mbschr"] = self._strchrHook
-        self.apiHooks["strrchr"] = self._strrchrHook
-        self.apiHooks["wcsrchr"] = self._wcsrchrHook
-        self.apiHooks["mbsrchr"] = self._strrchrHook
-        self.apiHooks["wcslen"] = self._wcslenHook
-        self.apiHooks["lstrlenW"] = self._wcslenHook
-        self.apiHooks["mbslen"] = self._strlenHook
-        self.apiHooks["mbstrlen"] = self._strlenHook
-        self.apiHooks["wcsnlen"] = self._wcsnlenHook
-        self.apiHooks["wcsnlen_s"] = self._wcsnlenHook
-        self.apiHooks["mbsnlen"] = self._strnlenHook
-        self.apiHooks["mbstrnlen"] = self._strnlenHook
-        self.apiHooks["strcat"] = self._strcatHook
-        self.apiHooks["lstrcatA"] = self._strcatHook
-        self.apiHooks["strncat"] = self._strncatHook
-        self.apiHooks["wcscat"] = self._wcscatHook
-        self.apiHooks["lstrcatW"] = self._wcscatHook
-        self.apiHooks["wcsncat"] = self._wcsncatHook
-        self.apiHooks["mbscat"] = self._strcatHook
-        self.apiHooks["mbsncat"] = self._strncatHook
-        self.apiHooks["strlwr"] = self._strlwrHook
-        self.apiHooks["strupr"] = self._struprHook
-        self.apiHooks["wcslwr"] = self._wcslwrHook
-        self.apiHooks["wcsupr"] = self._wcsuprHook
-        self.apiHooks["mbslwr"] = self._strlwrHook
-        self.apiHooks["mbsupr"] = self._struprHook
-        self.apiHooks["strdup"] = self._strdupHook
-        self.apiHooks["wcsdup"] = self._wcsdupHook
-        self.apiHooks["mbsdup"] = self._strdupHook
-        self.apiHooks["mbtowc"] = self._mbtowcHook
-        self.apiHooks["mbstowcs"] = self._mbstowcsHook
-        self.apiHooks["wctomb"] = self._wctombHook
-        self.apiHooks["wcstombs"] = self._wcstombsHook
-        self.apiHooks["MultiByteToWideChar"] = self._multiByteToWideCharHook
-        self.apiHooks["WideCharToMultiByte"] = self._wideCharToMultiByteHook
-        self.apiHooks["memset"] = self._memsetHook
-        self.apiHooks["ZeroMemory"] = self._bzeroHook
-        self.apiHooks["bzero"] = self._bzeroHook
+        self.apiHooks["VirtualAlloc"] = flare_emu_hooks._virtualAllocHook
+        self.apiHooks["VirtualAllocEx"] = flare_emu_hooks._virtualAllocExHook
+        self.apiHooks["malloc"] = flare_emu_hooks._allocMem1Hook
+        self.apiHooks["calloc"] = flare_emu_hooks._callocHook
+        self.apiHooks["realloc"] = flare_emu_hooks._reallocHook
+        self.apiHooks["memcpy"] = flare_emu_hooks._memcpyHook
+        self.apiHooks["memmove"] = flare_emu_hooks._memcpyHook
+        self.apiHooks["strlen"] = flare_emu_hooks._strlenHook
+        self.apiHooks["lstrlenA"] = flare_emu_hooks._strlenHook
+        self.apiHooks["strnlen"] = flare_emu_hooks._strnlenHook
+        self.apiHooks["strnlen_s"] = flare_emu_hooks._strnlenHook
+        self.apiHooks["strcmp"] = flare_emu_hooks._strcmpHook
+        self.apiHooks["lstrcmpA"] = flare_emu_hooks._strcmpHook
+        self.apiHooks["strncmp"] = flare_emu_hooks._strncmpHook
+        self.apiHooks["stricmp"] = flare_emu_hooks._stricmpHook
+        self.apiHooks["lstrcmpiA"] = flare_emu_hooks._stricmpHook
+        self.apiHooks["strnicmp"] = flare_emu_hooks._strnicmpHook
+        self.apiHooks["wcscmp"] = flare_emu_hooks._wcscmpHook
+        self.apiHooks["lstrcmpW"] = flare_emu_hooks._wcscmpHook
+        self.apiHooks["wcsncmp"] = flare_emu_hooks._wcsncmpHook
+        self.apiHooks["wcsicmp"] = flare_emu_hooks._wcsicmpHook
+        self.apiHooks["lstrcmpiW"] = flare_emu_hooks._wcsicmpHook
+        self.apiHooks["wcsnicmp"] = flare_emu_hooks._wcsnicmpHook
+        self.apiHooks["mbscmp"] = flare_emu_hooks._strcmpHook
+        self.apiHooks["mbsncmp"] = flare_emu_hooks._strncmpHook
+        self.apiHooks["mbsicmp"] = flare_emu_hooks._stricmpHook
+        self.apiHooks["mbsnicmp"] = flare_emu_hooks._strnicmpHook
+        self.apiHooks["strcpy"] = flare_emu_hooks._strcpyHook
+        self.apiHooks["strncpy"] = flare_emu_hooks._strncpyHook
+        self.apiHooks["lstrcpyA"] = flare_emu_hooks._strcpyHook
+        self.apiHooks["lstrcpynA"] = flare_emu_hooks._strncpyHook
+        self.apiHooks["strncpy_s"] = flare_emu_hooks._strncpysHook
+        self.apiHooks["wcscpy"] = flare_emu_hooks._wcscpyHook
+        self.apiHooks["wcsncpy"] = flare_emu_hooks._wcsncpyHook
+        self.apiHooks["lstrcpyW"] = flare_emu_hooks._wcscpyHook
+        self.apiHooks["lstrcpynW"] = flare_emu_hooks._wcsncpyHook
+        self.apiHooks["wcsncpy_s"] = flare_emu_hooks._wcsncpysHook
+        self.apiHooks["mbscpy"] = flare_emu_hooks._strcpyHook
+        self.apiHooks["mbsncpy"] = flare_emu_hooks._strncpyHook
+        self.apiHooks["mbsncpy_s"] = flare_emu_hooks._strncpysHook
+        self.apiHooks["memchr"] = flare_emu_hooks._memchrHook
+        self.apiHooks["strchr"] = flare_emu_hooks._strchrHook
+        self.apiHooks["wcschr"] = flare_emu_hooks._wcschrHook
+        self.apiHooks["mbschr"] = flare_emu_hooks._strchrHook
+        self.apiHooks["strrchr"] = flare_emu_hooks._strrchrHook
+        self.apiHooks["wcsrchr"] = flare_emu_hooks._wcsrchrHook
+        self.apiHooks["mbsrchr"] = flare_emu_hooks._strrchrHook
+        self.apiHooks["wcslen"] = flare_emu_hooks._wcslenHook
+        self.apiHooks["lstrlenW"] = flare_emu_hooks._wcslenHook
+        self.apiHooks["mbslen"] = flare_emu_hooks._strlenHook
+        self.apiHooks["mbstrlen"] = flare_emu_hooks._strlenHook
+        self.apiHooks["wcsnlen"] = flare_emu_hooks._wcsnlenHook
+        self.apiHooks["wcsnlen_s"] = flare_emu_hooks._wcsnlenHook
+        self.apiHooks["mbsnlen"] = flare_emu_hooks._strnlenHook
+        self.apiHooks["mbstrnlen"] = flare_emu_hooks._strnlenHook
+        self.apiHooks["strcat"] = flare_emu_hooks._strcatHook
+        self.apiHooks["lstrcatA"] = flare_emu_hooks._strcatHook
+        self.apiHooks["strncat"] = flare_emu_hooks._strncatHook
+        self.apiHooks["wcscat"] = flare_emu_hooks._wcscatHook
+        self.apiHooks["lstrcatW"] = flare_emu_hooks._wcscatHook
+        self.apiHooks["wcsncat"] = flare_emu_hooks._wcsncatHook
+        self.apiHooks["mbscat"] = flare_emu_hooks._strcatHook
+        self.apiHooks["mbsncat"] = flare_emu_hooks._strncatHook
+        self.apiHooks["strlwr"] = flare_emu_hooks._strlwrHook
+        self.apiHooks["strupr"] = flare_emu_hooks._struprHook
+        self.apiHooks["wcslwr"] = flare_emu_hooks._wcslwrHook
+        self.apiHooks["wcsupr"] = flare_emu_hooks._wcsuprHook
+        self.apiHooks["mbslwr"] = flare_emu_hooks._strlwrHook
+        self.apiHooks["mbsupr"] = flare_emu_hooks._struprHook
+        self.apiHooks["strdup"] = flare_emu_hooks._strdupHook
+        self.apiHooks["wcsdup"] = flare_emu_hooks._wcsdupHook
+        self.apiHooks["mbsdup"] = flare_emu_hooks._strdupHook
+        self.apiHooks["mbtowc"] = flare_emu_hooks._mbtowcHook
+        self.apiHooks["mbstowcs"] = flare_emu_hooks._mbstowcsHook
+        self.apiHooks["wctomb"] = flare_emu_hooks._wctombHook
+        self.apiHooks["wcstombs"] = flare_emu_hooks._wcstombsHook
+        self.apiHooks["MultiByteToWideChar"] = flare_emu_hooks._multiByteToWideCharHook
+        self.apiHooks["WideCharToMultiByte"] = flare_emu_hooks._wideCharToMultiByteHook
+        self.apiHooks["memset"] = flare_emu_hooks._memsetHook
+        self.apiHooks["ZeroMemory"] = flare_emu_hooks._bzeroHook
+        self.apiHooks["bzero"] = flare_emu_hooks._bzeroHook
         
         # builtins
-        self.apiHooks["umodsi3"] = self._modHook
+        self.apiHooks["umodsi3"] = flare_emu_hooks._modHook
         
         self.allocMap = {}
         
@@ -1314,762 +1315,6 @@ class EmuHelper():
                           (self.hexString(size), self.hexString(userData["currAddr"])))
             size = MAX_ALLOC_SIZE
         return size
-            
-    ############################################
-    # BEGIN API HOOKS
-    ############################################
-    
-    # return a fake handle value
-    def _returnHandleHook(self, address, argv, funcName, userData):
-        self.uc.reg_write(self.regs["ret"], 42)
-        
-    def _returnParam1Hook(self, address, argv, funcName, userData):
-        self.uc.reg_write(self.regs["ret"], argv[0])
-    
-    def _allocMem1Hook(self, address, argv, funcName, userData):
-        allocSize = argv[0]
-        allocSize = self._checkMemSize(allocSize, userData)
-        self.uc.reg_write(self.regs["ret"], self.allocEmuMem(allocSize))
-        
-    def _allocMem2Hook(self, address, argv, funcName, userData):
-        allocSize = argv[1]
-        allocSize = self._checkMemSize(allocSize, userData)
-        self.uc.reg_write(self.regs["ret"], self.allocEmuMem(allocSize))
-        
-    def _allocMem3Hook(self, address, argv, funcName, userData):
-        allocSize = argv[2]
-        allocSize = self._checkMemSize(allocSize, userData)
-        self.uc.reg_write(self.regs["ret"], self.allocEmuMem(allocSize))
-        
-    def _callocHook(self, address, argv, funcName, userData):
-        allocSize = argv[0] * argv[1]
-        allocSize = self._checkMemSize(allocSize, userData)
-        self.uc.reg_write(self.regs["ret"], self.allocEmuMem(allocSize))
-        
-    # deny "in place only" flag
-    def _heapReAllocHook(self, address, argv, funcName, userData):
-        HEAP_REALLOC_IN_PLACE_ONLY = 0x10
-        if argv[1] & HEAP_REALLOC_IN_PLACE_ONLY:
-            self.uc.reg_write(self.regs["ret"], 0)
-        else:
-            allocSize = argv[3]
-            allocSize = self._checkMemSize(allocSize, userData)
-            region = self.getEmuMemRegion(argv[2])
-            if region is not None:
-                allocSize = max(region[1] - region[0], allocSize)
-                memAddr = self.allocEmuMem(allocSize)
-                self.copyEmuMem(memAddr, region[0], region[1] - region[0], userData)
-            else:
-                memAddr = self.allocEmuMem(allocSize)
-            self.uc.reg_write(self.regs["ret"], memAddr)
-        
-            
-    def _reallocHook(self, address, argv, funcName, userData):
-        allocSize = argv[1]
-        allocSize = self._checkMemSize(allocSize, userData)
-        region = self.getEmuMemRegion(argv[0])
-        if region is not None:
-            allocSize = max(region[1] - region[0], allocSize)
-            memAddr = self.allocEmuMem(allocSize)
-            self.copyEmuMem(memAddr, region[0], region[1] - region[0], userData)
-        else:
-            memAddr = self.allocEmuMem(allocSize)
-        self.uc.reg_write(self.regs["ret"], memAddr)
-            
-    # allocate regardless of commit flag, keep a mapping of requested addr -> actual addr
-    def _virtualAllocHook(self, address, argv, funcName, userData):
-        allocAddr = argv[0]
-        if allocAddr in self.allocMap:
-            self.uc.reg_write(self.regs["ret"], self.allocMap[allocAddr][0])
-            return
-        allocSize = argv[1]
-        allocSize = self._checkMemSize(allocSize, userData)  
-        memAddr = self.allocEmuMem(allocSize, allocAddr)
-        self.allocMap[allocAddr] = (memAddr, allocSize)
-        self.uc.reg_write(self.regs["ret"], memAddr)
-        
-    # handle same as VirtualAlloc hook, just with different argument placement
-    def _virtualAllocExHook(self, address, argv, funcName, userData):
-        allocAddr = argv[1]
-        if allocAddr in self.allocMap:
-            self.uc.reg_write(self.regs["ret"], self.allocMap[allocAddr][0])
-            return
-        allocSize = argv[2]
-        allocSize = self._checkMemSize(allocSize, userData)  
-        memAddr = self.allocEmuMem(allocSize, allocAddr)
-        self.allocMap[allocAddr] = (memAddr, allocSize)
-        self.uc.reg_write(self.regs["ret"], memAddr)
-        
-    def _memcpyHook(self, address, argv, funcName, userData):
-        copySize = argv[2]
-        copySize = self._checkMemSize(copySize, userData)
-        srcRegion = self.getEmuMemRegion(argv[1])
-        dstRegion = self.getEmuMemRegion(argv[0])
-        if dstRegion is None:
-            logging.debug("dest memory does not exist for memcpy @%s" % self.hexString(address))
-            dstRegion = self.getEmuMemRegion(self.allocEmuMem(copySize))
-            argv[0] = dstRegion[0]
-        if srcRegion is None:
-            logging.debug("source memory does not exist for memcpy @%s" % self.hexString(address))
-        else:
-            if copySize <= srcRegion[1] - argv[1] and copySize <= dstRegion[1] - argv[0]:
-                self.copyEmuMem(argv[0], argv[1], copySize, userData)
-            else:
-                logging.debug("dest memory not large enough @%s" % self.hexString(address))
-        self.uc.reg_write(self.regs["ret"], argv[0])
-        
-    def _strlenHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]):
-            self.uc.reg_write(self.regs["ret"], len(self.getEmuString(argv[0])))
-        else:
-            self.uc.reg_write(self.regs["ret"], 0)
-            
-    def _wcslenHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]):
-            self.uc.reg_write(self.regs["ret"], len(self.getEmuWideString(argv[0]).decode("utf-16")))
-        else:
-            self.uc.reg_write(self.regs["ret"], 0)
-    
-    def _strnlenHook(self, address, argv, funcName, userData):
-        strnlen = self._checkMemSize(argv[1], userData)
-        if self.isValidEmuPtr(argv[0]):
-            strlen = len(self.getEmuString(argv[0]))
-            strlen = min(strlen, strnlen)
-            self.uc.reg_write(self.regs["ret"], strlen)
-        else:
-            self.uc.reg_write(self.regs["ret"], 0)
-            
-    def _wcsnlenHook(self, address, argv, funcName, userData):
-        strnlen = self._checkMemSize(argv[1], userData)
-        if self.isValidEmuPtr(argv[0]):
-            strlen = len(self.getEmuWideString(argv[0]).decode("utf-16"))
-            if strlen > strnlen:
-                strlen = argv[1]
-            self.uc.reg_write(self.regs["ret"], strnlen)
-        else:
-            self.uc.reg_write(self.regs["ret"], 0)
-    
-    def _strcmpHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]) and self.isValidEmuPtr(argv[1]):
-            str1 = self.getEmuString(argv[1])
-            str2 = self.getEmuString(argv[0])
-            if str1 == str2:
-                self.uc.reg_write(self.regs["ret"], 0)
-                return
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-        
-    def _strncmpHook(self, address, argv, funcName, userData):
-        strnlen = self._checkMemSize(argv[2], userData)
-        if self.isValidEmuPtr(argv[0]) and self.isValidEmuPtr(argv[1]):
-            str1 = self.getEmuString(argv[1])
-            str2 = self.getEmuString(argv[0])
-            if str1[:strnlen] == str2[:strnlen]:
-                self.uc.reg_write(self.regs["ret"], 0)
-                return
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-        
-    def _stricmpHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]) and self.isValidEmuPtr(argv[1]):
-            str1 = self.getEmuString(argv[1])
-            str2 = self.getEmuString(argv[0])
-            if str1.lower() == str2.lower():
-                self.uc.reg_write(self.regs["ret"], 0)
-                return
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-        
-    def _strnicmpHook(self, address, argv, funcName, userData):
-        strnlen = self._checkMemSize(argv[2], userData)
-        if self.isValidEmuPtr(argv[0]) and self.isValidEmuPtr(argv[1]):
-            str1 = self.getEmuString(argv[1])
-            str2 = self.getEmuString(argv[0])
-            if str1[:strnlen].lower() == str2[:strnlen].lower():
-                self.uc.reg_write(self.regs["ret"], 0)
-                return
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-        
-    def _wcscmpHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]) and self.isValidEmuPtr(argv[1]):
-            str1 = self.getEmuWideString(argv[1]).decode("utf-16")
-            str2 = self.getEmuWideString(argv[0]).decode("utf-16")
-            if str1 == str2:
-                self.uc.reg_write(self.regs["ret"], 0)
-                return
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-        
-    def _wcsncmpHook(self, address, argv, funcName, userData):
-        strnlen = self._checkMemSize(argv[2], userData)
-        if self.isValidEmuPtr(argv[0]) and self.isValidEmuPtr(argv[1]):
-            str1 = self.getEmuWideString(argv[1]).decode("utf-16")
-            str2 = self.getEmuWideString(argv[0]).decode("utf-16")
-            if str1[:strnlen] == str2[:strnlen]:
-                self.uc.reg_write(self.regs["ret"], 0)
-                return
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-        
-    def _wcsicmpHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]) and self.isValidEmuPtr(argv[1]):
-            str1 = self.getEmuWideString(argv[1]).decode("utf-16")
-            str2 = self.getEmuWideString(argv[0]).decode("utf-16")
-            if str1.lower() == str2.lower():
-                self.uc.reg_write(self.regs["ret"], 0)
-                return
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-        
-    def _wcsnicmpHook(self, address, argv, funcName, userData):
-        strnlen = self._checkMemSize(argv[2], userData)
-        if self.isValidEmuPtr(argv[0]) and self.isValidEmuPtr(argv[1]):
-            str1 = self.getEmuWideString(argv[1]).decode("utf-16")
-            str2 = self.getEmuWideString(argv[0]).decode("utf-16")
-            if str1[:strnlen].lower() == str2[:strnlen].lower():
-                self.uc.reg_write(self.regs["ret"], 0)
-                return
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-        
-    def _strcpyHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            src = self.getEmuString(argv[1]) + "\x00"
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for strcpy @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(len(src)))
-                argv[0] = dstRegion[0]
-            if len(src) <= dstRegion[1] - argv[0]:
-                self.uc.mem_write(argv[0], src)
-                self.uc.reg_write(self.regs["ret"], argv[0])
-                return
-            else:
-                logging.debug("dest memory not large enough @%s" % self.hexString(address))
-
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-        
-    def _strncpyHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            strnlen = self._checkMemSize(argv[2], userData)
-            src = self.getEmuString(argv[1])
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for strncpy @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(strnlen))
-                argv[0] = dstRegion[0]
-            if strnlen <= dstRegion[1] - argv[0]:
-                if strnlen > len(src):
-                    src = src.ljust(strnlen, "\x00")
-                self.uc.mem_write(argv[0], src)
-                self.uc.reg_write(self.regs["ret"], argv[0])
-                return
-            else:
-                logging.debug("dest memory not large enough @%s" % self.hexString(address))
-
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-        
-    def _strncpysHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[2]):
-            strnlen = self._checkMemSize(argv[3], userData)
-            src = self.getEmuString(argv[2])
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for strncpy_s @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(strnlen))
-                argv[0] = dstRegion[0]
-            
-            strnlen = min(strnlen, len(src))
-            if strnlen + 1 <= dstRegion[1] - argv[0]:
-                self.uc.mem_write(argv[0], src + "\x00")
-                self.uc.reg_write(self.regs["ret"], 0)
-                return
-            else:
-                logging.debug("dest memory not large enough @%s" % self.hexString(address))
-
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-       
-    def _wcscpyHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            src = self.getEmuWideString(argv[1]) + "\x00\x00"
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for wcscpy @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(len(src)))
-                argv[0] = dstRegion[0]
-            if len(src) <= dstRegion[1] - argv[0]:
-                self.uc.mem_write(argv[0], src)
-                self.uc.reg_write(self.regs["ret"], argv[0])
-                return
-            else:
-                logging.debug("dest memory not large enough @%s" % self.hexString(address))
-
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-        
-    def _wcsncpyHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            strnlen = self._checkMemSize(argv[2] * 2, userData)
-            src = self.getEmuWideString(argv[1])
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for wcsncpy @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(strnlen))
-                argv[0] = dstRegion[0]
-            if strnlen <= dstRegion[1] - argv[0]:
-                if strnlen > len(src):
-                    src = src.ljust(strnlen, "\x00")
-                self.uc.mem_write(argv[0], src)
-                self.uc.reg_write(self.regs["ret"], argv[0])
-                return
-            else:
-                logging.debug("dest memory not large enough @%s" % self.hexString(address))
-
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-        
-    def _wcsncpysHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[2]):
-            strnlen = self._checkMemSize(argv[3] * 2, userData)
-            src = self.getEmuWideString(argv[2])
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for wcsncpy_s @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(strnlen))
-                argv[0] = dstRegion[0]
-                
-            strnlen = min(strnlen, len(src))
-            if strnlen + 2 <= dstRegion[1] - argv[0]:
-                self.uc.mem_write(argv[0], src[:strnlen] + "\x00\x00")
-                self.uc.reg_write(self.regs["ret"], 0)
-                return
-            else:
-                logging.debug("dest memory not large enough @%s" % self.hexString(address))
-
-        if self.size_pointer == 8:
-            val = 0xffffffffffffffff
-        else:
-            val = 0xffffffff
-        self.uc.reg_write(self.regs["ret"], val)
-    
-    def _memchrHook(self, address, argv, funcName, userData):
-        dstRegion = self.getEmuMemRegion(argv[0])
-        if dstRegion is not None:
-            srch = chr(argv[1] & 0xFF)
-            srchlen = argv[2]
-            # truncate search to end of region
-            if argv[0] + srchlen > dstRegion[1]:
-                srchlen = dstRegion[1] - argv[0]
-            buf = str(self.uc.mem_read(argv[0], srchlen))
-            offs = buf.find(srch)
-            if offs > -1:
-                self.uc.reg_write(self.regs["ret"], argv[0] + offs)
-                return
-                
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _mbstowcsHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            bufSize = self._checkMemSize(argv[2] * 2, userData)
-            src = self.getEmuString(argv[1])
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for mbtowc variant @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(bufSize))
-                argv[0] = dstRegion[0]
-
-            if argv[2] > len(src):
-                src = src.ljust(argv[2], "\x00")
-            else:
-                src += "\x00"
-            if len(src.encode("utf-16")[2:]) <= dstRegion[1] - argv[0]:
-                self.uc.mem_write(argv[0], src.encode("utf-16")[2:])
-                self.uc.reg_write(self.regs["ret"], len(src))
-                return
-            else:
-                logging.debug("dest memory not large enough @%s" % self.hexString(address))
-
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _mbtowcHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            src = self.getEmuString(argv[1])[0]
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for mbtowc variant @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(0x1000))
-                argv[0] = dstRegion[0]
-            self.uc.mem_write(argv[0], src.encode("utf-16")[2:4])
-            self.uc.reg_write(self.regs["ret"], 1)
-            return
-
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _mbstowcsHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            maxBufSize = self._checkMemSize(argv[2] * 2, userData)
-            src = self.getEmuString(argv[1])
-            if len(src) < argv[2]:
-                src += "\x00"
-            else:
-                src = src[:argv[2]]
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for mbtowc variant @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(maxBufSize))
-                argv[0] = dstRegion[0]
-            if len(src) * 2 + 2 <= dstRegion[1] - argv[0]:
-                self.uc.mem_write(argv[0], src.encode("utf-16")[2:] + "\x00\x00")
-                self.uc.reg_write(self.regs["ret"], len(src.replace("\x00", "")))
-                return
-            else:
-                logging.debug("dest memory not large enough @%s" % self.hexString(address))
-
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _wctombHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            src = self.getEmuWideString(argv[1]).decode("utf-16")
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for wctomb variant @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(0x1000))
-            argv[0] = dstRegion[0]
-            self.uc.mem_write(argv[0], src[0])
-            self.uc.reg_write(self.regs["ret"], 1)
-            return
-
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _wcstombsHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            bufSize = self._checkMemSize(argv[2], userData)
-            src = self.getEmuWideString(argv[1]).decode("utf-16")
-            if len(src) < argv[2]:
-                src += "\x00"
-            else:
-                src = src[:argv[2]]
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for wctomb variant @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(bufSize))
-                argv[0] = dstRegion[0]
-            if bufSize + 1 <= dstRegion[1] - argv[0]:
-                if bufSize > len(src):
-                    src = src.ljust(bufSize, "\x00")
-                self.uc.mem_write(argv[0], src + "\x00")
-                self.uc.reg_write(self.regs["ret"], len(src.replace("\x00", "")))
-                return
-            else:
-                logging.debug("dest memory not large enough @%s" % self.hexString(address))
-
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _multiByteToWideCharHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[2]):
-            src = self.getEmuString(argv[2])
-            if argv[3] == -1:
-                src += "\x00"
-                maxBufSize = self._checkMemSize(len(src) * 2, userData)
-            else:
-                maxBufSize = self._checkMemSize(argv[3] * 2, userData)
-            
-            if len(src) < argv[3]:
-                src += "\x00"
-            elif argv[3] != -1:
-                src = src[:argv[3]]
-                
-            if argv[5] == 0:
-                self.uc.reg_write(self.regs["ret"], len(src) * 2)
-                return
-            dstRegion = self.getEmuMemRegion(argv[4])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for mbtowc variant @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(maxBufSize))
-                argv[4] = dstRegion[0]
-            if len(src) * 2 + 2 <= dstRegion[1] - argv[4]:
-                self.uc.mem_write(argv[4], src.encode("utf-16")[2:] + "\x00\x00")
-                self.uc.reg_write(self.regs["ret"], len(src))
-                return
-            else:
-                logging.debug("dest memory not large enough @%s" % self.hexString(address))
-
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _wideCharToMultiByteHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[2]):
-            src = self.getEmuWideString(argv[2]).decode("utf-16")
-            if argv[3] == -1:
-                src += "\x00"
-                maxBufSize = self._checkMemSize(len(src), userData)
-            else:
-                maxBufSize = self._checkMemSize(argv[3], userData)
-            
-            if len(src) < argv[3]:
-                src += "\x00"
-            elif argv[3] != -1:
-                src = src[:argv[3]]
-                
-            if argv[5] == 0:
-                self.uc.reg_write(self.regs["ret"], len(src))
-                return
-            dstRegion = self.getEmuMemRegion(argv[4])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for mbtowc variant @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(maxBufSize))
-                argv[4] = dstRegion[0]
-            if len(src) + 1 <= dstRegion[1] - argv[4]:
-                self.uc.mem_write(argv[4], src + "\x00")
-                self.uc.reg_write(self.regs["ret"], len(src))
-                return
-            else:
-                logging.debug("dest memory not large enough @%s" % self.hexString(address))
-
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _memsetHook(self, address, argv, funcName, userData):
-        setSize = argv[2]
-        setSize = self._checkMemSize(setSize, userData)
-        dstRegion = self.getEmuMemRegion(argv[0])
-        src = chr(argv[1] & 0xFF)
-        if dstRegion is None:
-            logging.debug("dest memory does not exist for memset @%s" % self.hexString(address))
-            dstRegion = self.getEmuMemRegion(self.allocEmuMem(setSize))
-            argv[0] = dstRegion[0]
-        if setSize <= dstRegion[1] - argv[0]:
-            self.uc.mem_write(argv[0], src * setSize)
-        else:
-            logging.debug("dest memory not large enough @%s" % self.hexString(address))
-        self.uc.reg_write(self.regs["ret"], argv[0])
-    
-    def _bzeroHook(self, address, argv, funcName, userData):
-        setSize = argv[1]
-        setSize = self._checkMemSize(setSize, userData)
-        dstRegion = self.getEmuMemRegion(argv[0])
-        src = "\x00"
-        if dstRegion is None:
-            logging.debug("dest memory does not exist for memset @%s" % self.hexString(address))
-            dstRegion = self.getEmuMemRegion(self.allocEmuMem(setSize))
-            argv[0] = dstRegion[0]
-        if setSize <= dstRegion[1] - argv[0]:
-            self.uc.mem_write(argv[0], src * setSize)
-        else:
-            logging.debug("dest memory not large enough @%s" % self.hexString(address))
-        self.uc.reg_write(self.regs["ret"], argv[0])
-        
-    def _strcatHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            src = self.getEmuString(argv[1]) + "\x00"
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for strcat @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(len(src) + 1))
-                argv[0] = dstRegion[0]
-            dst = self.getEmuString(argv[0])
-            if len(dst) + len(src) <= dstRegion[1] - argv[0]:
-                self.uc.mem_write(argv[0], dst + src)
-                self.uc.reg_write(self.regs["ret"], argv[0])
-                return
-
-        self.uc.reg_write(self.regs["ret"], 0)
-                    
-    def _strncatHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            strnlen = self._checkMemSize(argv[2], userData)
-            src = self.getEmuString(argv[1])
-            strnlen = min(strnlen, len(src))
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for strncat @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(strnlen + 1))
-                argv[0] = dstRegion[0]
-            dst = self.getEmuString(argv[0])
-            if len(dst) + strnlen + 1 <= dstRegion[1] - argv[0]:
-                self.uc.mem_write(argv[0], dst + src[:strnlen] + "\x00")
-                self.uc.reg_write(self.regs["ret"], argv[0])
-                return
-
-        self.uc.reg_write(self.regs["ret"], 0)
-    
-    def _wcscatHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            src = self.getEmuWideString(argv[1]) + "\x00\x00"
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for wcscat @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(len(src)))
-                argv[0] = dstRegion[0]
-            dst = self.getEmuWideString(argv[0])
-            if len(dst) + len(src) <= dstRegion[1] - argv[0]:
-                self.uc.mem_write(argv[0], dst + src)
-                self.uc.reg_write(self.regs["ret"], argv[0])
-                return
-
-        self.uc.reg_write(self.regs["ret"], 0)
-    
-    def _wcsncatHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[1]):
-            strnlen = self._checkMemSize(argv[2], userData)
-            src = self.getEmuWideString(argv[1])
-            strnlen = min(strnlen * 2, len(src))
-            dstRegion = self.getEmuMemRegion(argv[0])
-            if dstRegion is None:
-                logging.debug("dest memory does not exist for wcsncat @%s" % self.hexString(address))
-                dstRegion = self.getEmuMemRegion(self.allocEmuMem(strnlen + 2))
-                argv[0] = dstRegion[0]
-            dst = self.getEmuWideString(argv[0])
-            if len(dst) + strnlen + 2 <= dstRegion[1] - argv[0]:
-                self.uc.mem_write(argv[0], dst + src[:strnlen] + "\x00\x00")
-                self.uc.reg_write(self.regs["ret"], argv[0])
-                return
-
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _strchrHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]):
-            s = self.getEmuString(argv[0])
-            idx = s.find(chr(argv[1] & 0xFF))
-            if idx != -1:
-                self.uc.reg_write(self.regs["ret"], argv[0] + idx)
-                return
-
-        self.uc.reg_write(self.regs["ret"], 0)
-    
-    def _wcschrHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]):
-            s = self.getEmuWideString(argv[0]).decode("utf-16")
-            idx = s.find(chr(argv[1] & 0xFF))
-            if idx != -1:
-                self.uc.reg_write(self.regs["ret"], argv[0] + idx * 2)
-                return
-
-        self.uc.reg_write(self.regs["ret"], 0)
-    
-    def _strrchrHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]):
-            s = self.getEmuString(argv[0])
-            idx = s.rfind(chr(argv[1] & 0xFF))
-            if idx != -1:
-                self.uc.reg_write(self.regs["ret"], argv[0] + idx)
-                return
-        
-        self.uc.reg_write(self.regs["ret"], 0)
-            
-    def _wcsrchrHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]):
-            s = self.getEmuWideString(argv[0]).decode("utf-16")
-            idx = s.rfind(chr(argv[1] & 0xFF))
-            if idx != -1:
-                self.uc.reg_write(self.regs["ret"], argv[0] + idx * 2)
-                return
-
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _strlwrHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]):
-            s = self.getEmuString(argv[0])
-            self.uc.mem_write(argv[0], s.lower())
-            self.uc.reg_write(self.regs["ret"], argv[0])
-            return
-        
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _struprHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]):
-            s = self.getEmuString(argv[0])
-            self.uc.mem_write(argv[0], s.upper())
-            self.uc.reg_write(self.regs["ret"], argv[0])
-            return
-        
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _wcslwrHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]):
-            s = self.getEmuWideString(argv[0]).decode("utf-16")
-            self.uc.mem_write(argv[0], s.lower().encode("utf-16")[2:])
-            self.uc.reg_write(self.regs["ret"], argv[0])
-            return
-        
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _wcsuprHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]):
-            s = self.getEmuWideString(argv[0]).decode("utf-16")
-            self.uc.mem_write(argv[0], s.upper().encode("utf-16")[2:])
-            self.uc.reg_write(self.regs["ret"], argv[0])
-            return
-        
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _strdupHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]):
-            s = self.getEmuString(argv[0])
-            memAddr = self.allocEmuMem(len(s) + 1)
-            self.uc.mem_write(memAddr, s)
-            self.uc.reg_write(self.regs["ret"], memAddr)
-            return
-        
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _wcsdupHook(self, address, argv, funcName, userData):
-        if self.isValidEmuPtr(argv[0]):
-            s = self.getEmuWideString(argv[0])
-            memAddr = self.allocEmuMem(len(s) + 2)
-            self.uc.mem_write(memAddr, s)
-            self.uc.reg_write(self.regs["ret"], memAddr)
-            return
-        
-        self.uc.reg_write(self.regs["ret"], 0)
-        
-    def _modHook(self, address, argv, funcName, userData):
-        self.uc.reg_write(self.regs["ret"], argv[0] % argv[1])
-        
-    ############################################
-    # END API HOOKS
-    ############################################
         
     # maps null memory as requested during emulation
     def _hookMemInvalid(self, uc, access, address, size, value, userData):
@@ -2124,7 +1369,7 @@ class EmuHelper():
         if funcName not in self.apiHooks:
             return False
         try:
-            self.apiHooks[funcName](address, argv, funcName, userData)
+            self.apiHooks[funcName](self, address, argv, funcName, userData)
         except Exception as e:
             logging.debug("error handling API hook: %s @%s" % (e, self.hexString(address)))
             
