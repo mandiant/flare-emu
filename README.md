@@ -125,6 +125,8 @@ The following is an incomplete list of some of the useful utility functions prov
 
 * `getArgv()` - Call this from an emulation hook at a "call" type instruction to receive an array of the arguments to the function.
 
+* `addApiHook(apiName, hook)` - Adds a new API hook for this instance of `EmuHelper`. Whenever a call instruction to `apiName` is encountered during emulation, `EmuHelper` will call the function specified by `hook`. If `hook` is a string, it is expected to be the name of an API already hooked by `EmuHelper`, in which case it will call its existing hook function. If `hook` is a function, it will call that function.
+
 
 # [Learn More](#learn)
 To learn more about **flare-emu**, please read our introductory blog at https://www.fireeye.com/blog/threat-research/2018/12/automating-objective-c-code-analysis-with-emulation.html.
