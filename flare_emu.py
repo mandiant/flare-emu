@@ -1215,7 +1215,7 @@ class EmuHelper():
     # aligned address above the highest, returns address, rebased if necessary
     def allocEmuMem(self, size, addr=None):
         allocSize = self.pageAlignUp(size)
-        if addr is None:
+        if addr is None or addr == 0:
             baseAddr = addr = self._findUnusedMemRegion()
         else:
             isValid = True
