@@ -28,6 +28,7 @@ import logging
 import struct
 import re
 import flare_emu_hooks
+import types
 
 IDADIR = idc.idadir()
 PAGESIZE = 0x1000
@@ -1153,8 +1154,28 @@ class EmuHelper():
         if self.arch == unicorn.UC_ARCH_ARM or self.arch == unicorn.UC_ARCH_ARM64:
             self._enableVFP()
 
+    # adds a new API hook to EmuHelper
+    # apiName: name of the function to hook as it is named in IDA Pro
+    # hook: can be a string for the name of an existing hooked API, in which case this new hook
+    # will use the same hook function
+    # hook: can alternatively be a hook function you have defined
+    def addApiHook(self, apiName, hook):
+        if isinstance(hook, str):
+            if hook in self.apiHooks:
+                self.apiHooks[apiName] = self.apiHooks[hook]
+            else:
+                print("%s is not a currently defined API hook" % hook)
+                return False
+        elif isinstance(hook, types.FunctionType):
+            self.apiHooks[apiName] = hook
+            return True
+        else:
+            print("unsupported hook type")
+            return False
+    
     # unmap all emulator memory
     def resetEmulatorMemory(self):
+        self.allocMap = {}
         for region in self.uc.mem_regions():
             self.uc.mem_unmap(region[0], region[1] - region[0] + 1)
 

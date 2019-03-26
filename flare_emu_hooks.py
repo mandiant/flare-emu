@@ -423,7 +423,7 @@ def _mbtowcHook(eh, address, argv, funcName, userData):
             logging.debug("dest memory does not exist for mbtowc variant @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(0x1000))
             argv[0] = dstRegion[0]
-        eh.uc.mem_write(argv[0], src.encode("utf-16")[2:4])
+        eh.uc.mem_write(argv[0], src.encode("utf-16")[2:4] + "\x00\x00")
         eh.uc.reg_write(eh.regs["ret"], 1)
         return
 

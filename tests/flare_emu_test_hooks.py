@@ -82,11 +82,32 @@ def iterateHook(eh, address, argv, userData):
                     actual = argv[i+1]
                     
                 if expected != actual:
-                    print("FAILED: %s does not match expected result %s" % (actual, expected))
+                    print("FAILED: %s does not match expected result %s" % (repr(actual), repr(expected)))
             return
     print("%s: test not found" % (testString.replace("\r\n", "")))
     
+def wcsdupHook(eh, address, argv, funcName, userData):
+    print("the new wcsdup hook was called")
+    eh.hookCalled = True
+    if eh.isValidEmuPtr(argv[0]):
+        s = "the quick brown fox jumps over the lazy dog".encode("utf-16")[2:]
+        memAddr = eh.allocEmuMem(len(s) + 2)
+        eh.uc.mem_write(memAddr, s)
+        eh.uc.reg_write(eh.regs["ret"], memAddr)
+        return
+    
+    eh.uc.reg_write(eh.regs["ret"], 0)
+
 if __name__ == '__main__':   
     eh = flare_emu.EmuHelper()
     print("testing iterate feature for printf function")
+    strcpyEa = idc.get_name_ea_simple("j_strcpy")
     eh.iterate(idc.get_name_ea_simple("printf"), iterateHook)
+    idc.set_name(strcpyEa, "testname", idc.SN_NOCHECK)
+    eh.addApiHook("testname", "strcpy")
+    eh.addApiHook("wcsdup", wcsdupHook)
+    print("testing with renamed and redirected strcpy hook and new hook for wcsdup")
+    eh.iterate(idc.get_name_ea_simple("printf"), iterateHook)
+    if "hookCalled" not in dir(eh):
+        print("FAILED: addApiHook hook not called")
+    
