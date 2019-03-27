@@ -78,7 +78,7 @@ The `iterateCallback` function receives the EmuHelper instance, named `eh` here,
 
 `iterate(target, targetCallback, preEmuCallback=None, callHook=None, instructionHook=None, hookData=None, resetEmuMem=False, hookApis=True, memAccessHook=None)` - For each target specified by `target`, a separate emulation is performed from the beginning of the containing function up to the target address. Emulation will be forced down the branches necessary to reach each target. `target` can be the address of a function, in which case the target list is populated with all the cross-references to the specified function. Or, `target` can be an explicit list of targets.
 
-* `targetCallback` is a function you create that will be called by `flare-emu` for each target that is reached during emulation. It has the following prototype: `instructionHook(emuHelper, address, arguments, userData)`.
+* `targetCallback` is a function you create that will be called by `flare-emu` for each target that is reached during emulation. It has the following prototype: `targetHook(emuHelper, address, arguments, userData)`.
 
 * `preEmuCallback` is a function you create that will be called before emulation for each target begins. You can implement some setup code here if needed.
 
