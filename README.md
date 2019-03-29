@@ -127,6 +127,8 @@ The following is an incomplete list of some of the useful utility functions prov
 
 * `addApiHook(apiName, hook)` - Adds a new API hook for this instance of `EmuHelper`. Whenever a call instruction to `apiName` is encountered during emulation, `EmuHelper` will call the function specified by `hook`. If `hook` is a string, it is expected to be the name of an API already hooked by `EmuHelper`, in which case it will call its existing hook function. If `hook` is a function, it will call that function.
 
+* `allocEmuMem(size, address=None)` - Allocates enough emulator memory to contain `size` bytes. It attempts to honor the requested `address`, but if it overlaps with an existing memory region, it will allocate in an unused memory region and return the new address. If `address` is not page-aligned, it will return an address that keeps the same page-aligned offset within the new region. For example, requesting address `0x1234` when `0x1000` is already allocated, may have it allocate at `0x2000` and return `0x2234` instead.
+
 
 # [Learn More](#learn)
 To learn more about **flare-emu**, please read our introductory blog at https://www.fireeye.com/blog/threat-research/2018/12/automating-objective-c-code-analysis-with-emulation.html.
