@@ -46,7 +46,7 @@ except NameError:
     long = int  # Python 3
 
 class EmuHelper():
-    def __init__(self, verbose = 0):
+    def __init__(self, verbose = 0, emuHelper=None):
         self.verbose = verbose
         self.stack = 0
         self.stackSize = 0x2000
@@ -64,7 +64,10 @@ class EmuHelper():
         self.h_inthook = None
         self.enteredBlock = False
         self.initEmuHelper()
-        self.reloadBinary()
+        if emuHelper is not None:
+            self._cloneEmuMem(emuHelper)
+        else:
+            self.reloadBinary()
 
     # startAddr: address to start emulation
     # endAddr: address to end emulation, this instruction is not executed. 
@@ -92,16 +95,20 @@ class EmuHelper():
     # hookApis: set to False if you don't want flare-emu to emulate common 
     #     runtime memory and string functions, defaults to True
     # returns the emulation object in its state after the emulation completes
+    # strict: checks branch destinations to ensure the disassembler expects
+    #     instructions, otherwise skips branch instruction. if disabled, 
+    #     will make code in disassembler as it emulates (DISABLE WITH CAUTION). 
+    #     enabled by default
     # count: Value passed to unicorn's uc_emu_start to indicate max number of
     #     instructions to emulate, Defaults to 0 (all code available).
     def emulateRange(self, startAddr, endAddr=None, registers=None, stack=None, instructionHook=None, callHook=None,
-                     memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, count=0):
+                     memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, strict=True, count=0):
         if registers is None:
             registers = {}
         if stack is None:
             stack = []
         userData = {"EmuHelper": self, "funcStart": idc.get_func_attr(startAddr, idc.FUNCATTR_START),
-                    "funcEnd": idc.get_func_attr(startAddr, idc.FUNCATTR_END), "skipCalls": skipCalls,
+                    "funcEnd": idc.get_func_attr(startAddr, idc.FUNCATTR_END), "skipCalls": skipCalls, "strict": strict,
                     "endAddr": endAddr, "func_t": idaapi.get_func(startAddr), "callHook": callHook, "hookApis": hookApis, "count": count}
         if hookData:
             userData.update(hookData)
@@ -382,6 +389,67 @@ class EmuHelper():
             unicorn.UC_HOOK_INTR, self._hookInterrupt, userData)
         mu.emu_start(baseAddr, endAddr)
         return mu
+        
+    # emulates from startAddr continually
+    # must specify conditions under which emulation is stopped such as the "count" param
+    # or making a call to eh.stopEmulation from one of your hooks
+    # startAddr: address to start emulation
+    # registers: a dict whose keys are register names and values are
+    #     register values, all unspecified registers will be initialized to 0
+    # stack: a list of values to be setup on the stack before emulation.
+    #     if X86 you must account for SP+0 (return address).
+    #     for the stack and registers parameters, specifying a string will 
+    #     allocate memory, write the string to it, and write a pointer to that 
+    #     memory in the specified register/arg
+    # instructionHook: instruction hook func that runs AFTER emulateFrom's hook
+    # hookData: user-defined data to be made available in instruction hook
+    #     function, care must be taken to not use key names already used by
+    #     flare_emu in userData dictionary
+    # skipCalls: emulator will skip over call instructions and adjust the
+    #     stack accordingly, defaults to True
+    # emulateFrom will always skip over calls to empty memory
+    # callHook: callback function that will be called whenever the emulator
+    #     encounters a "call" instruction. keep in mind your skipCalls value
+    #     and that emulateFrom will always skip over calls to empty memory
+    # memAccessHook: hook function that runs when the emulator encounters a
+    #     memory read or write
+    # hookApis: set to False if you don't want flare-emu to emulate common 
+    #     runtime memory and string functions, defaults to True
+    # returns the emulation object in its state after the emulation completes
+    # strict: checks branch destinations to ensure the disassembler expects
+    #     instructions, otherwise skips branch instruction. if disabled, 
+    #     will make code in disassembler as it emulates (DISABLE WITH CAUTION). 
+    #     enabled by default
+    # count: Value passed to unicorn's uc_emu_start to indicate max number of
+    #     instructions to emulate, Defaults to 0 (all code available).
+    def emulateFrom(self, startAddr, registers=None, stack=None, instructionHook=None, callHook=None,
+                     memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, strict=True, count=0):
+        if registers is None:
+            registers = {}
+        if stack is None:
+            stack = []
+        userData = {"EmuHelper": self, "skipCalls": skipCalls, "callHook": callHook, 
+                    "hookApis": hookApis, "func_t": idaapi.get_func(startAddr), "strict": strict, "count": count}
+        if hookData:
+            userData.update(hookData)
+        mu = self.uc
+        self._prepEmuContext(registers, stack)
+        self.resetEmuHooks()
+        self.h_codehook = mu.hook_add(
+            unicorn.UC_HOOK_CODE, self._emulateRangeCodeHook, userData)
+        if instructionHook:
+            self.h_userhook = mu.hook_add(unicorn.UC_HOOK_CODE, instructionHook, userData)
+        if memAccessHook:
+            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, memAccessHook,
+                                                    userData)
+        self.h_memhook = mu.hook_add(unicorn.UC_HOOK_MEM_READ_UNMAPPED | unicorn.UC_HOOK_MEM_WRITE_UNMAPPED |
+                                     unicorn.UC_HOOK_MEM_FETCH_UNMAPPED, self._hookMemInvalid, userData)
+        self.h_inthook = mu.hook_add(
+            unicorn.UC_HOOK_INTR, self._hookInterrupt, userData)
+        if self.arch == unicorn.UC_ARCH_ARM:
+            userData["changeThumbMode"] = True
+        mu.emu_start(startAddr, idc.get_inf_attr(idc.INF_MAX_EA), count=count)
+        return mu
 
     def hexString(self, va):
         if va > 0xffffffff:
@@ -428,7 +496,8 @@ class EmuHelper():
                 self.regs["pc"], userData["currAddr"] + userData["currAddrSize"])
         # get IDA's SP delta value for next instruction to adjust stack accordingly since we are skipping
         # this instruction
-        self.uc.reg_write(self.regs["sp"], self.getRegVal(
+        if userData["func_t"] is not None:
+            self.uc.reg_write(self.regs["sp"], self.getRegVal(
             "sp") + idaapi.get_sp_delta(userData["func_t"], idc.next_head(
             userData["currAddr"], idc.get_inf_attr(idc.INF_MAX_EA))))
             
@@ -1194,7 +1263,8 @@ class EmuHelper():
         endAddr = idc.get_inf_attr(idc.INF_MAX_EA)
         self.baseAddr = baseAddr
         memsize = endAddr - baseAddr
-        memsize = self.pageAlignUp(memsize)
+        memsize = self.pageAlignUp(memsize) + PAGESIZE
+        logging.debug("base addr: %s end addr: %s memsize: %s" % (self.hexString(baseAddr), self.hexString(endAddr), self.hexString(memsize)))
         # map all binary segments as one memory region for easier management
         self.uc.mem_map(baseAddr & self.pageMask, memsize)
         for segVA in idautils.Segments():
@@ -1344,11 +1414,11 @@ class EmuHelper():
         try:
             uc.mem_map(address & self.pageMask, PAGESIZE)
             uc.mem_write(address & self.pageMask, "\x00" * PAGESIZE)
+            logging.debug("allocated memory to %s" % self.hexString(address))
         except Exception:
             logging.debug("error writing to %s, changing IP from %s to %s" % (self.hexString(address), self.hexString(
                 userData['currAddr']), self.hexString(userData['currAddr'] + userData['currAddrSize'])))
-            uc.reg_write(
-                self.regs["pc"], userData['currAddr'] + userData['currAddrSize'])
+            userData['EmuHelper'].skipInstruction(userData)
         return True
 
     # cannot seem to move IP forward from this hook for some reason..
@@ -1408,6 +1478,11 @@ class EmuHelper():
                 userData["changeThumbMode"] = False
                 return
 
+            # if strict mode is disabled, make instructions as we go as needed
+            if not userData.get("strict", True):
+                if idc.print_insn_mnem(address) == "":
+                    self._forceMakeInsn(address)
+            
             if self.verbose > 0:
                 if self.verbose > 1:
                     logging.debug(self.getEmuState())
@@ -1415,11 +1490,11 @@ class EmuHelper():
                 logging.debug("%s: %s" % (self.hexString(address), dis))
 
             # stop emulation if specified endAddr is reached
-            if userData["endAddr"] is not None:
+            if userData.get("endAddr", None) is not None:
                 if address == userData["endAddr"]:
                     self.stopEmulation(userData)
                     return
-            if self._isBadBranch(userData):
+            if userData.get("strict", True) and self._isBadBranch(userData):
                 self.skipInstruction(userData)
                 return
             # stop annoying run ons if we end up somewhere we dont belong
@@ -1430,7 +1505,7 @@ class EmuHelper():
                 return
 
             # otherwise, stop emulation when returning from function emulation began in
-            elif (self.isRetInstruction(address) and
+            elif ("funcStart" in userData and self.isRetInstruction(address) and
                     idc.get_func_attr(address, idc.FUNCATTR_START) ==
                     userData["funcStart"]):
                 self.stopEmulation(userData)
@@ -1459,8 +1534,9 @@ class EmuHelper():
                 if self.getRegVal("pc") != userData["currAddr"]:
                     # get IDA's SP delta value for next instruction to adjust stack accordingly since we are skipping this
                     # instruction
-                    uc.reg_write(self.regs["sp"], self.getRegVal("sp") +
-                                 idaapi.get_sp_delta(userData["func_t"], self.getRegVal("pc")))
+                    if userData["func_t"] is not None:
+                        uc.reg_write(self.regs["sp"], self.getRegVal("sp") +
+                                    idaapi.get_sp_delta(userData["func_t"], self.getRegVal("pc")))
                     return
                  
                 if userData["hookApis"] and self._handleApiHooks(address, self.getArgv(), funcName, userData):
@@ -1476,9 +1552,10 @@ class EmuHelper():
             elif (idc.print_insn_mnem(address) == "mov" and 
                   idc.get_operand_type(address, 1) == 2 and 
                   idc.get_operand_type(address, 0) == 1 and
+                  len(idc.print_operand(address, 0)) == 3 and
                   idc.print_operand(address, 1)[:3] == "ds:" and 
                   str(uc.mem_read(idc.get_operand_value(address, 1), self.size_pointer)) ==
-                  "\x00" * self.size_pointer):
+                  "\x00" * self.size_pointer):             
                   uc.reg_write(self.regs[idc.print_operand(address, 0)], idc.get_operand_value(address, 1))
                   self.skipInstruction(userData)
 
@@ -1532,7 +1609,7 @@ class EmuHelper():
                     nextInsnAddr = self._scanForCode(address + size)
                     self.changeProgramCounter(userData, nextInsnAddr)
                     return
-            elif self._isBadBranch(userData):
+            elif userData.get("strict", False) and self._isBadBranch(userData):
                 self.skipInstruction(userData)
                 return
 
@@ -1692,6 +1769,14 @@ class EmuHelper():
                     logging.debug("bad branch detected @%s" % self.hexString(userData["currAddr"]))
                     return True
     
+    def _forceMakeInsn(self, address):
+        if idc.create_insn(address) == 0:
+            idc.del_items(address, idc.DELIT_EXPAND)
+            idc.create_insn(address)
+        idc.auto_wait()
+
+            
+        
     # recursively searches control flow graph dict returned by _explore for a  
     # single path from currentNode to target basic block, check path parameter upon return
     def _findPathFromGraph(self, path, graph, currentNode, target):
@@ -1762,6 +1847,20 @@ class EmuHelper():
                 highest = endVA
         highest += PAGESIZE
         return self.pageAlignUp(highest)
+    
+    def _cloneEmuMem(self, eh):
+        self.resetEmulatorMemory()
+        self.baseAddr = eh.baseAddr
+        logging.debug("cloning provided emu memory")
+        for region in eh.uc.mem_regions():
+            size = region[1] - region[0] + 1
+            logging.debug("mapping %s bytes @%s" %
+                      (self.hexString(size), self.hexString(region[0])))
+            self.uc.mem_map(region[0], size)
+            logging.debug("copying region")
+            self.uc.mem_write(region[0], eh.getEmuBytes(region[0], size))
+        self._buildStack()
+        
 
     # stack setup
     # stack pointer will begin in the middle of allocated stack size
