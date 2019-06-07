@@ -14,6 +14,8 @@ It currently provides four different interfaces to serve your emulation needs, a
 
 4. `emulateBytes` – This API provides a way to simply emulate a blob of extraneous shellcode. The provided bytes are not added to the IDB and are simply emulated as is. This can be useful for preparing the emulation environment. For example, `flare-emu` itself uses this API to manipulate a Model Specific Register (MSR) for the `ARM64` CPU that is not exposed by Unicorn in order to enable Vector Floating Point (VFP) instructions and register access. The Unicorn emulation object is returned for further probing by the user.
 
+5. `emulateFrom` - This API is useful in cases where function boundaries are not clearly defined as is often the case with obfuscated binaries or shellcode. You provide a starting address, and it will emulate until there is nothing left to emulate or you stop emulation in one of your hooks. This can be called with the `strict` parameter set to `False` to enable dynamic code discovery; `flare-emu` will have IDA Pro make instructions as they are encountered during emulation.
+
 ## [Installation](#installation)
 To install `flare-emu`, simply drop it in your IDA Pro's `python` directory and import it as a module in your IDApython scripts. `flare-emu` depends on [Unicorn](https://www.unicorn-engine.org/) and its Python bindings.
 
@@ -56,7 +58,7 @@ The `iterateCallback` function receives the EmuHelper instance, named `eh` here,
 `decrypt` creates a second instance of `EmuHelper` that is used to emulate the `decryptString` function itself, which will decrypt the string for us. The prototype of this `decryptString` function is as follows: `char * decryptString(char *text, int textLength, char *key, int keyLength)`. It simply decrypts the string in place. Our `decrypt` function passes in the arguments as received by the `iterateCallback` function to our call to `EmuHelper`'s `emulateRange` API. Since this is an `x86_64` binary, the calling convention uses registers to pass arguments and not the stack. `flare-emu` automatically determines which registers represent which arguments based on the architecture and file format of the binary as determined by IDA Pro, allowing you to write at least somewhat architecture agnostic code. If this were 32-bit `x86`, you would use the `stack` argument to pass the arguments instead, like so: `myEH.emulateRange(idc.get_name_ea_simple("decryptString"), stack = [0, argv[0], argv[1], argv[2], argv[3]])`. The first stack value is the return address in `x86`, so we just use `0` as a placeholder value here. Once emulation is complete, we call the `getEmuString` API to retrieve the null-terminated string stored in the memory location pointed to by the first argument passed to the function.
 
 ## [Emulation Functions](#emulationfuncs)
-`emulateRange(startAddr, endAddr=None, registers=None, stack=None, instructionHook=None, callHook=None, memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, count=0)` - Emulates the range of instructions starting at `startAddress` and ending at `endAddress`, not including the instruction at `endAddress`. If endAddress is `None`, emulation stops when a "return" type instruction is encountered within the same function that emulation began. 
+`emulateRange(startAddr, endAddr=None, registers=None, stack=None, instructionHook=None, callHook=None, memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, strict=True, count=0)` - Emulates the range of instructions starting at `startAddress` and ending at `endAddress`, not including the instruction at `endAddress`. If endAddress is `None`, emulation stops when a "return" type instruction is encountered within the same function that emulation began. 
 
 * `registers` is a dictionary with keys being register names and values being register values. Some special register names are created by `flare-emu` and can be used here, such as `arg1`, `arg2`, etc., `ret`, and `pc`. 
 
@@ -73,6 +75,8 @@ The `iterateCallback` function receives the EmuHelper instance, named `eh` here,
 * `hookApis` causes `flare-emu` to perform a naive implementation of some of the more common runtime and OS library functions it encounters during emulation. This frees you from having to be concerned about calls to functions such as `memcpy`, `strcat`, `malloc`, etc., and defaults to `True`.
 
 * `memAccessHook` can be a function you define to be called whenever memory is accessed for reading or writing. It has the following prototype: `memAccessHook(unicornObject, accessType, memAccessAddress, memAccessSize, memValue, userData)`.
+
+* `strict`, when set to `True` (default), checks branch destinations to ensure the disassembler expects instructions. It otherwise skips the branch instruction. If set to `False`, `flare-emu` will make instructions in IDA Pro as it emulates them **(DISABLE WITH CAUTION)**.
 
 * `count` is the maximum number of instructions to emulate, defaults to `0` which means no limit.
 
@@ -91,6 +95,9 @@ The `iterateCallback` function receives the EmuHelper instance, named `eh` here,
 * `maxNodes` - the max number of basic blocks that will be searched when finding paths through the target function. This is a safety measure to prevent unreasonable search times and hangs and likely does not need to be changed.
 
 `emulateBytes(bytes, registers=None, stack=None, baseAddress=0x400000, instructionHook=None, hookData=None)` - Writes the code contained in `bytes` to emulation memory at `baseAddress` if possible and emulates the instructions from the beginning to the end of `bytes`. 
+
+`emulateFrom(startAddr, registers=None, stack=None, instructionHook=None, callHook=None, memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, strict=True, count=0)` - This API is useful in cases where function boundaries are not clearly defined as is often the case with obfuscated binaries or shellcode. You provide a starting address as `startAddr`, and it will emulate until there is nothing left to emulate or you stop emulation in one of your hooks. This can be called with the `strict` parameter set to `False` to enable dynamic code discovery; `flare-emu` will have IDA Pro make instructions as they are encountered during emulation.
+
 
 ## [Utility Functions](#utility)
 The following is an incomplete list of some of the useful utility functions provided by the `EmuHelper` class.
