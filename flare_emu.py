@@ -1609,7 +1609,7 @@ class EmuHelper():
                     nextInsnAddr = self._scanForCode(address + size)
                     self.changeProgramCounter(userData, nextInsnAddr)
                     return
-            elif userData.get("strict", False) and self._isBadBranch(userData):
+            elif userData.get("strict", True) and self._isBadBranch(userData):
                 self.skipInstruction(userData)
                 return
 
@@ -1768,6 +1768,7 @@ class EmuHelper():
                    (self.uc.reg_read(self.regs[idc.print_operand(userData["currAddr"], 0)])) == ""):
                     logging.debug("bad branch detected @%s" % self.hexString(userData["currAddr"]))
                     return True
+        return False
     
     def _forceMakeInsn(self, address):
         if idc.create_insn(address) == 0:
