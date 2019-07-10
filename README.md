@@ -17,7 +17,7 @@ It currently provides four different interfaces to serve your emulation needs, a
 5. `emulateFrom` - This API is useful in cases where function boundaries are not clearly defined as is often the case with obfuscated binaries or shellcode. You provide a starting address, and it will emulate until there is nothing left to emulate or you stop emulation in one of your hooks. This can be called with the `strict` parameter set to `False` to enable dynamic code discovery; `flare-emu` will have IDA Pro make instructions as they are encountered during emulation.
 
 ## [Installation](#installation)
-To install `flare-emu`, simply drop it in your IDA Pro's `python` directory and import it as a module in your IDApython scripts. `flare-emu` depends on [Unicorn](https://www.unicorn-engine.org/) and its Python bindings.
+To install `flare-emu`, simply drop `flare_emu.py` and `flare_emu_hooks.py` into your IDA Pro's `python` directory and import it as a module in your IDApython scripts. `flare-emu` depends on [Unicorn](https://www.unicorn-engine.org/) and its Python bindings.
 
 **IMPORTANT NOTE**  
 `flare-emu` was written using the new IDA Pro 7x API, it is not backwards compatible with previous versions of IDA Pro.
