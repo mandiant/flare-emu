@@ -8,7 +8,7 @@
 #
 # Author: James T. Bennett
 #
-# flare-emu combines Unicorn and IDA to provide emulation support for
+# flare-emu combines Unicorn and a choice of binary analysis engine to provide emulation support for
 # reverse engineers
 # Currently supports 32-bit and 64-bit x86, ARM, and ARM64
 # Dependencies:
@@ -16,9 +16,6 @@
 ############################################
 
 from __future__ import print_function
-import idc
-import idaapi
-import idautils
 import unicorn
 import unicorn.x86_const
 import unicorn.arm_const
@@ -30,7 +27,6 @@ import re
 import flare_emu_hooks
 import types
 
-IDADIR = idc.idadir()
 PAGESIZE = 0x1000
 PAGEALIGNCHECK = 0xfff
 X86NOP = "\x90"
@@ -45,14 +41,208 @@ try:
 except NameError:
     long = int  # Python 3
 
+# parent class to provide binary analysis engine support for EmuHelper class
+# subclassed by Radare2AnalysisHelper and IdaProAnalysisHelper
+class AnalysisHelper(object):
+    def __init__(self):
+        self.o_reg = 1
+        self.o_mem = 2
+        self.o_phrase = 3
+        self.o_displ = 4
+        self.o_imm = 5
+        self.o_far = 6
+        self.o_near = 7
+
+    def getFuncStart(self, addr):
+        pass
+
+    def getFuncEnd(self, addr):
+        pass
+
+    def getFuncName(self, addr):
+        pass
+
+    def getMnem(self, addr):
+        pass
+
+    # gets address of last instruction in the basic block containing addr
+    def getBlockEndInsnAddr(self, addr):
+        pass
+
+    def skipJumpTable(self, addr):
+        pass
+
+    def getMininumAddr(self):
+        pass
+
+    def getMaximumAddr(self):
+        pass
+
+    def getBytes(self, addr, size):
+        pass
+
+    def getCString(self, addr):
+        pass
+
+    def getOperand(self, addr, opndNum):
+        pass
+
+    def getWordValue(self, addr):
+        pass
+
+    def getDwordValue(self, addr):
+        pass
+
+    def getQWordValue(self, addr):
+        pass
+
+    def isThumbMode(self, addr):
+        pass
+
+    def getSegName(self, addr):
+        pass
+
+    def getSegStart(self, addr):
+        pass
+
+    def getSegEnd(self, addr):
+        pass
+
+    def getSegSize(self, addr):
+        pass
+
+    def getSegments(self):
+        pass
+
+    # gets disassembled instruction with names and comments as a string
+    def getDisasmLine(self, addr):
+        pass
+
+    def getName(self, addr):
+        pass
+
+    def getNameAddr(self, name):
+        pass
+
+    def getOpndType(self, addr, opndNum):
+        pass
+
+    def getOpndValue(self, addr, opndNum):
+        pass
+
+    def makeInsn(self, addr):
+        pass
+
+    def createFunction(self, addr):
+        pass
+
+    def getFlowChart(self, addr):
+        pass
+
+    def getSpDelta(self, addr):
+        pass    
+
+    def getXrefsTo(self, addr):
+        pass
+
+    def getBlockByAddr(self, addr, flowchart):
+        pass
+
+    def getArch(self):
+        pass
+
+    def getBitness(self):
+        pass
+
+    def getFileType(self):
+        pass
+
+    def getInsnSize(self, addr):
+        pass
+
+    def isTerminatingBB(self, addr):
+        pass
+
+    def getTerminatingBBs(self, flowchart):
+        term_bbs = []
+        for bb in flowchart:
+            if self.isTerminatingBB(bb):
+                term_bbs.append(bb)
+        return term_bbs
+
+    def getStartBB(self, addr, flowchart):
+        funcStart = self.getFuncStart(addr)
+        for bb in flowchart:
+            if bb.start_ea == funcStart:
+                return bb
+
+    def getBlockIdByVA(self, targetVA, flowchart):
+        return self.getBlockByVA(targetVA, flowchart).id
+
+    def getBlockByVA(self, targetVA, flowchart):
+        for bb in flowchart:
+            if targetVA >= bb.start_ea and targetVA < bb.end_ea:
+                return bb
+                
+    def getBlockById(self, id, flowchart):
+        for bb in flowchart:
+            if bb.id == id:
+                return bb
+
+    def skipJumpTable(self, addr):
+        pass
+
+    def normalizeFuncName(self, funcName, extra=False):
+        # normalize funcName
+        # remove Radare2's flag space prefixes
+        if funcName[:4] == "sym.":
+            funcName = funcName[4:]
+
+        if funcName[:4] == "imp.":
+            funcName = funcName[4:]
+
+        if funcName[:5] == "func.":
+            funcName = funcName[5:]
+
+        if funcName[:4] == "fcn.":
+            funcName = funcName[4:]
+
+        if funcName[:4] == "sub.":
+            funcName = funcName[4:]
+
+        # remove Radare2's library prefix
+        funcName = re.sub(r"[A-Za-z0-9_]+\.dll_", "", funcName)
+
+        if extra:
+            # remove appended _n from IDA Pro names
+            funcName = re.sub(r"_[\d]+$", "", funcName)
+                
+            # remove appended _l for locale flavors of string functions
+            funcName = re.sub(r"_l$", "", funcName)
+            
+            # remove IDA Pro's j_ prefix
+            if funcName[:2] == "j_":
+                funcName = funcName[2:]
+
+            # remove prepended underscores
+            funcName = re.sub(r"^_+", "", funcName)
+        return funcName
+
+    def setName(self, addr, name, size=0):
+        pass
+
+    def setComment(self, addr, comment):
+        pass
+
+
 class EmuHelper():
-    def __init__(self, verbose = 0, emuHelper=None):
+    def __init__(self, verbose=0, emuHelper=None, samplePath=None):
         self.verbose = verbose
         self.stack = 0
         self.stackSize = 0x2000
         self.size_DWORD = 4
         self.size_pointer = 0
-        self.callMnems = ["call", "BL", "BLX", "BLR",
+        self.callMnems = ["CALL", "BL", "BLX", "BLR",
                           "BLXEQ", "BLEQ", "BLREQ"]
         self.paths = {}
         self.filetype = "UNKNOWN"
@@ -63,6 +253,25 @@ class EmuHelper():
         self.h_memhook = None
         self.h_inthook = None
         self.enteredBlock = False
+
+        if samplePath is not None:
+            try:
+                import flare_emu_radare
+            except Exception as e:
+                print("error importing flare_emu_radare: %s" % e)
+                return
+            self.analysisHelper = flare_emu_radare.Radare2AnalysisHelper(samplePath)
+            self.analysisHelperFramework = "Radare2"
+        else:
+            try:
+                import flare_emu_ida
+            except:
+                print("error importing flare_emu_ida, either specify samplePath to use radare2 or run under IDA Pro 7+")
+                return
+            self.analysisHelper = flare_emu_ida.IdaProAnalysisHelper()
+            self.analysisHelperFramework = "IDA Pro"
+            
+
         self.initEmuHelper()
         if emuHelper is not None:
             self._cloneEmuMem(emuHelper)
@@ -107,9 +316,9 @@ class EmuHelper():
             registers = {}
         if stack is None:
             stack = []
-        userData = {"EmuHelper": self, "funcStart": idc.get_func_attr(startAddr, idc.FUNCATTR_START),
-                    "funcEnd": idc.get_func_attr(startAddr, idc.FUNCATTR_END), "skipCalls": skipCalls, "strict": strict,
-                    "endAddr": endAddr, "func_t": idaapi.get_func(startAddr), "callHook": callHook, "hookApis": hookApis, "count": count}
+        userData = {"EmuHelper": self, "funcStart": self.analysisHelper.getFuncStart(startAddr),
+                    "funcEnd": self.analysisHelper.getFuncEnd(startAddr), "skipCalls": skipCalls, "strict": strict,
+                    "endAddr": endAddr, "callHook": callHook, "hookApis": hookApis, "count": count}
         if hookData:
             userData.update(hookData)
         mu = self.uc
@@ -134,10 +343,13 @@ class EmuHelper():
     # call emulateRange using selected instructions in IDA Pro as start/end addresses
     def emulateSelection(self, registers=None, stack=None, instructionHook=None, callHook=None,
                      memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, count=0):
-        selection = idaapi.read_selection()
-        if selection[0]:
-            self.emulateRange(selection[1], selection[2], registers, stack, instructionHook, 
-                              callHook, memAccessHook, hookData, skipCalls, hookApis, count=count)
+        if idaapi:
+            selection = idaapi.read_selection()
+            if selection[0]:
+                self.emulateRange(selection[1], selection[2], registers, stack, instructionHook, 
+                                  callHook, memAccessHook, hookData, skipCalls, hookApis, count=count)
+        else:
+            print("emulateSelection is only available for IDA Pro")
 
     # target: finds first path through function to target using depth first
     #     search for each address in list, if a single address is specified,
@@ -171,20 +383,20 @@ class EmuHelper():
         if type(target) in [int, long]:
             logging.debug("iterate target function: %s" %
                           self.hexString(target))
-            xrefs = list(idautils.XrefsTo(target))
+            xrefs = self.analysisHelper.getXrefsTo(target)
             for i, x in enumerate(xrefs):
                 # get unique functions from xrefs that we need to emulate
-                funcStart = idc.get_func_attr(x.frm, idc.FUNCATTR_START)
-                if funcStart == idc.BADADDR:
+                funcStart = self.analysisHelper.getFuncStart(x)
+                if funcStart == None:
                     continue
-                if idc.print_insn_mnem(x.frm) not in ["call", "jmp", "BL", "BLX", "B", "BLR"]:
+                if self.analysisHelper.getMnem(x).upper() not in ["CALL", "JMP", "BL", "BLX", "B", "BLR"]:
                     continue
 
                 logging.debug("getting a path to %s, %d of %d" %
-                              (self.hexString(x.frm), i + 1, len(xrefs)))
-                flow, paths = self.getPath(x.frm)
+                              (self.hexString(x), i + 1, len(xrefs)))
+                flow, paths = self.getPath(x)
                 if flow is not None:
-                    targetInfo[x.frm] = (flow, paths)
+                    targetInfo[x] = (flow, paths)
         elif isinstance(target, list):
             for i, t in enumerate(target):
                 logging.debug("getting a path to %s, %d of %d" %
@@ -227,7 +439,6 @@ class EmuHelper():
                 userData["targetInfo"].keys(), reverse=True)[0]
             flow, paths = userData["targetInfo"][targetVA]
             funcStart = flow[0][0]
-            userData["func_t"] = idaapi.get_func(funcStart)
             self.pathIdx = 0
             numTargets = len(userData["targetInfo"])
             logging.debug("run #%d, %d targets remaining: %s (%d paths)" % (
@@ -249,8 +460,7 @@ class EmuHelper():
                 if self.arch == unicorn.UC_ARCH_ARM:
                     userData["changeThumbMode"] = True
 
-                self.uc.emu_start(funcStart, idc.get_func_attr(
-                    funcStart, idc.FUNCATTR_END))
+                self.uc.emu_start(funcStart, self.analysisHelper.getFuncEnd(funcStart))
                 self.pathIdx += 1
                 self.blockIdx = 0
                 cnt2 += 1
@@ -286,10 +496,9 @@ class EmuHelper():
     def iterateAllPaths(self, target, targetCallback, preEmuCallback=None, callHook=None, instructionHook=None,
                         hookData=None, resetEmuMem=False, hookApis=True, memAccessHook=None, maxPaths=MAXCODEPATHS,
                         maxNodes=MAXNODESEARCH):
-        function = idaapi.get_func(target)
-        flowchart = idaapi.FlowChart(function)
+        flowchart = self.analysisHelper.getFlowChart(target)
         # targets are all function ends
-        targets = [idc.prev_head(bb.end_ea) for bb in self.getTerminatingBBs(flowchart)]
+        targets = [self.analysisHelper.getBlockEndInsnAddr(bb.start_ea, flowchart) for bb in self.analysisHelper.getTerminatingBBs(flowchart)]
 
         targetInfo = {}
         for i, t in enumerate(targets):
@@ -330,7 +539,6 @@ class EmuHelper():
             userData["targetVA"] = targetVA
             flow, paths = userData["targetInfo"][targetVA]
             funcStart = flow[0][0]
-            userData["func_t"] = idaapi.get_func(funcStart)
             self.pathIdx = 0
             numTargets = len(userData["targetInfo"])
             logging.debug("run #%d, %d targets remaining: %s (%d paths)" % (
@@ -352,15 +560,14 @@ class EmuHelper():
                 if self.arch == unicorn.UC_ARCH_ARM:
                     userData["changeThumbMode"] = True
 
-                self.uc.emu_start(funcStart, idc.get_func_attr(
-                    funcStart, idc.FUNCATTR_END))
+                self.uc.emu_start(funcStart, self.analysisHelper.getFuncEnd(funcStart))
                 self.pathIdx += 1
                 self.blockIdx = 0
                 cnt2 += 1
             cnt += 1
 
     # simply emulates to the end of whatever bytes are provided
-    # these bytes are not loaded into IDB, only emulator memory; IDA APIs are not available for use in hooks here
+    # these bytes are not loaded into IDB, only emulator memory; analysisHelper APIs are not available for use in hooks here
     def emulateBytes(self, bytes, registers=None, stack=None, baseAddr=0x400000, instructionHook=None,
                      memAccessHook=None, hookData=None):
         if registers is None:
@@ -429,7 +636,7 @@ class EmuHelper():
         if stack is None:
             stack = []
         userData = {"EmuHelper": self, "skipCalls": skipCalls, "callHook": callHook, 
-                    "hookApis": hookApis, "func_t": idaapi.get_func(startAddr), "strict": strict, "count": count}
+                    "hookApis": hookApis, "strict": strict, "count": count}
         if hookData:
             userData.update(hookData)
         mu = self.uc
@@ -448,7 +655,7 @@ class EmuHelper():
             unicorn.UC_HOOK_INTR, self._hookInterrupt, userData)
         if self.arch == unicorn.UC_ARCH_ARM:
             userData["changeThumbMode"] = True
-        mu.emu_start(startAddr, idc.get_inf_attr(idc.INF_MAX_EA), count=count)
+        mu.emu_start(startAddr, self.analysisHelper.getMaximumAddr(), count=count)
         return mu
 
     def hexString(self, va):
@@ -462,44 +669,35 @@ class EmuHelper():
             v += PAGESIZE - (v % PAGESIZE)
         return v
 
-    # returns string of bytes from the IDB up to a null terminator, starting at addr, do not necessarily need to be printable
-    # characters
-    def getIDBString(self, addr):
-        buf = ""
-        while idc.get_bytes(addr, 1, False) != "\x00" and idc.get_bytes(addr, 1, False) is not None:
-            buf += idc.get_bytes(addr, 1, False)
-            addr += 1
-
-        return buf
-
     # determines if the instruction at addr is for returning from a function call
     def isRetInstruction(self, addr):
-        if idc.print_insn_mnem(addr)[:3].lower() == "ret":
+        if self.analysisHelper.getMnem(addr)[:3].lower() == "ret":
             return True
 
-        if idc.print_insn_mnem(addr) in ["BX", "B"] and idc.print_operand(addr, 0) == "LR":
+        if self.analysisHelper.getMnem(addr).lower() in ["bx", "b"] and self.analysisHelper.getOperand(addr, 0).lower() == "lr":
+            return True
+
+        if self.analysisHelper.getMnem(addr).lower() == "pop" and "pc" in self.analysisHelper.getDisasmLine(addr).lower():
             return True
 
         return False
 
     # call from an emulation hook to skip the current instruction, moving pc to next instruction
-    # useIDA option was added to handle cases where IDA folds multiple instructions
+    # useAnalysisHelper option was added to handle cases where IDA folds multiple instructions (Radare2 doesn't do this)
     # do not call multiple times in a row, depends on userData being updated by hook
-    def skipInstruction(self, userData, useIDA=False):
+    def skipInstruction(self, userData, useAnalysisHelper=False):
         if self.arch == unicorn.UC_ARCH_ARM:
             userData["changeThumbMode"] = True
-        if useIDA:
-            self.uc.reg_write(self.regs["pc"], idc.next_head(
-                userData["currAddr"], idc.get_inf_attr(idc.INF_MAX_EA)))
+        if useAnalysisHelper:
+            self.uc.reg_write(self.regs["pc"], userData["currAddr"] + self.analysisHelper.getInsnSize(userData["currAddr"]))
         else:
             self.uc.reg_write(
                 self.regs["pc"], userData["currAddr"] + userData["currAddrSize"])
-        # get IDA's SP delta value for next instruction to adjust stack accordingly since we are skipping
+        # get SP delta value for next instruction to adjust stack accordingly since we are skipping
         # this instruction
-        if userData["func_t"] is not None:
-            self.uc.reg_write(self.regs["sp"], self.getRegVal(
-            "sp") + idaapi.get_sp_delta(userData["func_t"], idc.next_head(
-            userData["currAddr"], idc.get_inf_attr(idc.INF_MAX_EA))))
+        self.uc.reg_write(self.regs["sp"], self.getRegVal(
+            "sp") + self.analysisHelper.getSpDelta(userData["currAddr"] + 
+            self.analysisHelper.getInsnSize(userData["currAddr"])))
             
     # call from an emulation hook to change program counter
     def changeProgramCounter(self, userData, newPC):
@@ -661,40 +859,18 @@ class EmuHelper():
     def writeEmuPtr(self, va, value):
         self.uc.mem_write(va, struct.pack(self.pack_fmt, value))
 
-    # for debugging
-    def formatBB(self, bb):
-        bbtype = {0: "fcb_normal", 1: "idaapi.fcb_indjump", 2: "idaapi.fcb_ret", 3: "fcb_cndret",
-                  4: "idaapi.fcb_noret", 5: "fcb_enoret", 6: "idaapi.fcb_extern", 7: "fcb_error"}
-        return("ID: %d, Start: 0x%x, End: 0x%x, Last instruction: 0x%x, Size: %d, "
-               "Type: %s" % (bb.id, bb.start_ea, bb.end_ea, idc.idc.prev_head(bb.end_ea,
-                             idc.get_inf_attr(idc.INF_MIN_EA)), (bb.end_ea - bb.start_ea), bbtype[bb.type]))
-
-    def getSegSize(self, ea, segEnd):
-        size = 0
-        while idc.has_value(idc.get_full_flags(ea)):
-            if ea >= segEnd:
-                break
-            size += 1
-            ea += 1
-        return size
-
-    # returns True if ea is in an area designated by IDA to be in thumb mode
-    def isThumbMode(self, ea):
-        return idc.get_sreg(ea, "T") == 1
-
     def pageAlign(self, addr):
         return addr & 0xfffffffffffff000
 
     
     # get first path to target found during exploration
     def getPath(self, targetVA):
-        function = idaapi.get_func(targetVA)
-        flowchart = idaapi.FlowChart(function)
-        target_bb = self.getBlockByVA(targetVA, flowchart)
-        start_bb = self.getStartBB(function, flowchart)
+        flowchart = self.analysisHelper.getFlowChart(targetVA)
+        target_bb = self.analysisHelper.getBlockByVA(targetVA, flowchart)
+        start_bb = self.analysisHelper.getStartBB(targetVA, flowchart)
         if target_bb.id != 0:
             if self.verbose > 0:
-                logging.debug("exploring function with %d blocks" % flowchart.size)
+                logging.debug("exploring function with %d blocks" % len(flowchart))
             graph = self._explore(start_bb, target_bb)
             if graph is None:
                 logging.debug(
@@ -715,22 +891,21 @@ class EmuHelper():
         if self.verbose > 0:
             logging.debug("code path to target: %s" % repr(path))
 
-        # create my own idaapi.FlowChart object so it can be pickled for debugging purposes
+        # create my own idaapi.FlowChart-like object to optimize calculating block end addrs
         flow = {}
         for bb in flowchart:
-            flow[bb.id] = (bb.start_ea, bb.end_ea)
+            flow[bb.id] = (bb.start_ea, self.analysisHelper.getBlockEndInsnAddr(bb.start_ea, flowchart))
         return flow, [path]
         
     # get up to maxPaths path to target
     # for some complex functions, may give up before finding a path
     def getPathsToTarget(self, targetVA, maxPaths=MAXCODEPATHS, maxNodes=MAXNODESEARCH):
-        function = idaapi.get_func(targetVA)
-        flowchart = idaapi.FlowChart(function)
-        target_bb = self.getBlockByVA(targetVA, flowchart)
-        start_bb = self.getStartBB(function, flowchart)
+        flowchart = self.analysisHelper.getFlowChart(targetVA)
+        target_bb = self.analysisHelper.getBlockByVA(targetVA, flowchart)
+        start_bb = self.analysisHelper.getStartBB(targetVA, flowchart)
         if target_bb.id != 0:
             if self.verbose > 0:
-                logging.debug("exploring function with %d blocks" % flowchart.size)
+                logging.debug("exploring function with %d blocks" % len(flowchart))
             graph = self._explore(start_bb)
             if graph is None:
                 logging.debug(
@@ -757,19 +932,18 @@ class EmuHelper():
         # create my own idaapi.FlowChart object so it can be pickled for debugging purposes
         flow = {}
         for bb in flowchart:
-            flow[bb.id] = (bb.start_ea, bb.end_ea)
+            flow[bb.id] = (bb.start_ea, self.analysisHelper.getBlockEndInsnAddr(bb.start_ea, flowchart))
         return flow, paths
 
     # get up to maxPaths paths from function start to any terminating basic block
     # for some complex functions, may give up before finding a path
     def getPaths(self, fva, maxPaths=MAXCODEPATHS, maxNodes=MAXNODESEARCH):
-        function = idaapi.get_func(fva)
-        flowchart = idaapi.FlowChart(function)
-        term_bbs_ids = [bb.id for bb in self.getTerminatingBBs(flowchart)]
-        start_bb = self.getStartBB(function, flowchart)
+        flowchart = self.analysisHelper.getFlowChart(fva)
+        term_bbs_ids = [bb.id for bb in self.analysisHelper.getTerminatingBBs(flowchart)]
+        start_bb = self.analysisHelper.getStartBB(fva, flowchart)
         if term_bbs_ids != [0]:
             if self.verbose > 0:
-                logging.debug("exploring function with %d blocks" % flowchart.size)
+                logging.debug("exploring function with %d blocks" % len(flowchart))
             graph = self._explore(start_bb)
             if graph is None:
                 logging.debug(
@@ -795,53 +969,19 @@ class EmuHelper():
         # create my own idaapi.FlowChart object so it can be pickled for debugging purposes
         flow = {}
         for bb in flowchart:
-            flow[bb.id] = (bb.start_ea, bb.end_ea)
+            flow[bb.id] = (bb.start_ea, self.analysisHelper.getBlockEndInsnAddr(bb.start_ea, flowchart))
         return flow, paths
-
-    def getTerminatingBBs(self, flowchart):
-        term_bbs = []
-        for bb in flowchart:
-            if self.isTerminatingBB(bb):
-                term_bbs.append(bb)
-        return term_bbs
-
-    def getStartBB(self, function, flowchart):
-        for bb in flowchart:
-            if bb.start_ea == function.start_ea:
-                return bb
-
-    def getBlockIdByVA(self, targetVA, flowchart):
-        return self.getBlockByVA(targetVA, flowchart).id
-
-    def getBlockByVA(self, targetVA, flowchart):
-        for bb in flowchart:
-            if targetVA >= bb.start_ea and targetVA < bb.end_ea:
-                return bb
-                
-    def getBlockById(self, id, flowchart):
-        for bb in flowchart:
-            if bb.id == id:
-                return bb
-
-    def isTerminatingBB(self, bb):
-        if (bb.type == idaapi.fcb_ret or bb.type == idaapi.fcb_noret or
-                (bb.type == idaapi.fcb_indjump and len(list(bb.succs())) == 0)):
-            return True
-        for b in bb.succs():
-            if b.type == idaapi.fcb_extern:
-                return True
-
-        return False
 
     # sets up arch/mode specific variables, initializes emulator
     def initEmuHelper(self):
-        info = idaapi.get_inf_structure()
-        if info.procName == "metapc":
+        arch = self.analysisHelper.getArch()
+        bitness = self.analysisHelper.getBitness()
+        self.filetype = self.analysisHelper.getFileType()
+        if arch == "X86":
             self.arch = unicorn.UC_ARCH_X86
-            arch = "X86"
-            if info.is_64bit():
+            if bitness == 64:
                 self.mode = unicorn.UC_MODE_64
-                self.derefPtr = idc.get_qword
+                self.derefPtr = self.analysisHelper.getQWordValue
                 mode = "64-bit"
                 self.size_pointer = 8
                 self.pack_fmt = "<Q"
@@ -860,22 +1000,19 @@ class EmuHelper():
                              "r12": unicorn.x86_const.UC_X86_REG_R12, "r13": unicorn.x86_const.UC_X86_REG_R13,
                              "r14": unicorn.x86_const.UC_X86_REG_R14, "r15": unicorn.x86_const.UC_X86_REG_R15,
                              "ret": unicorn.x86_const.UC_X86_REG_RAX}
-                if info.filetype == 11:
-                    self.filetype = "PE"
+                if self.filetype == "PE":
                     self.tilName = "mssdk_win7"
                     self.regs.update({"arg1": unicorn.x86_const.UC_X86_REG_RCX,
                                       "arg2": unicorn.x86_const.UC_X86_REG_RDX,
                                       "arg3": unicorn.x86_const.UC_X86_REG_R8,
                                       "arg4": unicorn.x86_const.UC_X86_REG_R9})
-                elif info.filetype == 25:
-                    self.filetype = "MACHO"
+                elif self.filetype == "MACHO":
                     self.tilName = "macosx64"
                     self.regs.update({"arg1": unicorn.x86_const.UC_X86_REG_RDI,
                                       "arg2": unicorn.x86_const.UC_X86_REG_RSI,
                                       "arg3": unicorn.x86_const.UC_X86_REG_RDX,
                                       "arg4": unicorn.x86_const.UC_X86_REG_RCX})
-                elif info.filetype == 18:
-                    self.filetype = "ELF"
+                elif self.filetype == "ELF":
                     self.tilName = "gnulnx_x64"
                     self.regs.update({"arg1": unicorn.x86_const.UC_X86_REG_RDI,
                                       "arg2": unicorn.x86_const.UC_X86_REG_RSI,
@@ -888,20 +1025,17 @@ class EmuHelper():
                                       "arg2": unicorn.x86_const.UC_X86_REG_RDX,
                                       "arg3": unicorn.x86_const.UC_X86_REG_R8,
                                       "arg4": unicorn.x86_const.UC_X86_REG_R9})
-            elif info.is_32bit():
-                if info.filetype == 11:
-                    self.filetype = "PE"
+            elif bitness == 32:
+                if self.filetype == "PE":
                     self.tilName = "mssdk"
-                elif info.filetype == 25:
-                    self.filetype = "MACHO"
+                elif self.filetype == "MACHO":
                     self.tilName = "macosx"
-                elif info.filetype == 18:
-                    self.filetype = "ELF"
+                elif self.filetype == "ELF":
                     self.tilName = "gnulnx_x86"
                 else:
                     self.filetype = "UNKNOWN"
                 self.mode = unicorn.UC_MODE_32
-                self.derefPtr = idc.get_wide_dword
+                self.derefPtr = self.analysisHelper.getDwordValue
                 mode = "32-bit"
                 self.size_pointer = 4
                 self.pack_fmt = "<I"
@@ -921,26 +1055,26 @@ class EmuHelper():
                 logging.debug(
                     "sample contains code for unsupported processor architecture")
                 return
-        elif info.procName == "ARM":
+        elif arch == "ARM":
             self.mode = unicorn.UC_MODE_ARM
             mode = "ARM"
-            if info.is_64bit():
+            if bitness == 64:
                 self.arch = unicorn.UC_ARCH_ARM64
                 arch = "ARM64"
-                if info.filetype == 11:
+                if self.analysisHelper.getFileType() == "PE":
                     self.filetype = "PE"
                     self.tilName = "mssdk_win7"
-                elif info.filetype == 25:
+                elif self.analysisHelper.getFileType() == "MACHO":
                     self.filetype = "MACHO"
                     self.tilName = "macosx64"
-                elif info.filetype == 18:
+                elif self.analysisHelper.getFileType() == "ELF":
                     self.filetype = "ELF"
                     self.tilName = "gnulnx_x64"
                 else:
                     self.filetype = "UNKNOWN"
                 self.size_pointer = 8
                 self.pack_fmt = "<Q"
-                self.derefPtr = idc.get_qword
+                self.derefPtr = self.analysisHelper.getQWordValue
                 self.pageMask = 0xfffffffffffff000
                 self.regs = {"R0": unicorn.arm64_const.UC_ARM64_REG_X0, "R1": unicorn.arm64_const.UC_ARM64_REG_X1,
                              "R2": unicorn.arm64_const.UC_ARM64_REG_X2, "R3": unicorn.arm64_const.UC_ARM64_REG_X3,
@@ -1052,23 +1186,21 @@ class EmuHelper():
                                   "arg2": unicorn.arm64_const.UC_ARM64_REG_X1,
                                   "arg3": unicorn.arm64_const.UC_ARM64_REG_X2,
                                   "arg4": unicorn.arm64_const.UC_ARM64_REG_X3})
-            elif info.is_32bit():
+            elif bitness == 16 or bitness == 32:
                 self.arch = unicorn.UC_ARCH_ARM
                 arch = "ARM"
-                if info.filetype == 11:
-                    self.filetype = "PE"
+                if self.filetype == "PE":
                     self.tilName = "mssdk"
-                elif info.filetype == 25:
-                    self.filetype = "MACHO"
+                elif self.filetype== "MACHO":
                     self.tilName = "macosx"
-                elif info.filetype == 18:
-                    self.filetype = "ELF"
+                elif self.filetype == "ELF":
                     self.tilName = "gnulnx_x86"
                 else:
                     self.filetype = "UNKNOWN"
+
                 self.size_pointer = 4
                 self.pack_fmt = "<I"
-                self.derefPtr = idc.get_wide_dword
+                self.derefPtr = self.analysisHelper.getDwordValue
                 self.pageMask = 0xfffff000
                 self.regs = {"R0": unicorn.arm_const.UC_ARM_REG_R0, "R1": unicorn.arm_const.UC_ARM_REG_R1,
                              "R2": unicorn.arm_const.UC_ARM_REG_R2, "R3": unicorn.arm_const.UC_ARM_REG_R3,
@@ -1224,7 +1356,7 @@ class EmuHelper():
             self._enableVFP()
 
     # adds a new API hook to EmuHelper
-    # apiName: name of the function to hook as it is named in IDA Pro
+    # apiName: name of the function to hook as it is named in binary analysis tool
     # hook: can be a string for the name of an existing hooked API, in which case this new hook
     # will use the same hook function
     # hook: can alternatively be a hook function you have defined
@@ -1259,24 +1391,25 @@ class EmuHelper():
     # reset emulator memory and rewrite binary segments to emulator memory, build new stack
     def reloadBinary(self):
         self.resetEmulatorMemory()
-        baseAddr = idc.get_inf_attr(idc.INF_MIN_EA)
-        endAddr = idc.get_inf_attr(idc.INF_MAX_EA)
+        baseAddr = self.analysisHelper.getMininumAddr()
+        endAddr = self.analysisHelper.getMaximumAddr()
         self.baseAddr = baseAddr
         memsize = endAddr - baseAddr
         memsize = self.pageAlignUp(memsize) + PAGESIZE
-        logging.debug("base addr: %s end addr: %s memsize: %s" % (self.hexString(baseAddr), self.hexString(endAddr), self.hexString(memsize)))
+        logging.debug("base addr: %s end addr: %s memsize: %s" % (self.hexString(baseAddr), 
+                      self.hexString(endAddr), self.hexString(memsize)))
         # map all binary segments as one memory region for easier management
         self.uc.mem_map(baseAddr & self.pageMask, memsize)
-        for segVA in idautils.Segments():
-            segName = idc.get_segm_name(segVA)
-            endVA = idc.get_segm_end(segVA)
+        for segVA in self.analysisHelper.getSegments():
+            segName = self.analysisHelper.getSegName(segVA)
+            endVA = self.analysisHelper.getSegEnd(segVA)
             segSizeTotal = endVA - segVA
-            segSize = self.getSegSize(segVA, endVA)
+            segSize = self.analysisHelper.getSegSize(segVA, endVA)
             logging.debug("bytes in seg: %s" % self.hexString(segSize))
             logging.debug("mapping segment %s: %s - %s" %
                           (segName, self.hexString(segVA), self.hexString(endVA)))
             if segSize > 0:
-                segBytes = idc.get_bytes(segVA, segSize, False)
+                segBytes = self.analysisHelper.getBytes(segVA, segSize)
                 self.uc.mem_write(segVA, segBytes)
             segLeftover = segSizeTotal - segSize
             if segLeftover > 0:
@@ -1341,14 +1474,10 @@ class EmuHelper():
             logging.debug("exception in copyEmuMem @%s: %s" % (self.hexString(address), str(e)))
         
     def getCallTargetName(self, address):
-        if idc.get_operand_type(address, 0) == 1:
-            funcName = idc.get_name(self.uc.reg_read(
-                self.regs[idc.print_operand(address, 0)]), idc.ida_name.GN_VISIBLE)
-        # elif idc.get_operand_type(address, 0) == 2:
-            # funcName = idc.get_name(self.getEmuPtr(idc.get_operand_value(address, 0)), 
-            #                         idc.ida_name.GN_VISIBLE)
+        if self.analysisHelper.getOpndType(address, 0) == self.analysisHelper.o_reg:
+            funcName = self.analysisHelper.getName(self.getRegVal(self.analysisHelper.getOperand(address, 0)))
         else:
-            funcName = idc.get_name(idc.get_operand_value(address, 0), idc.ida_name.GN_VISIBLE)
+            funcName = self.analysisHelper.getName(self.analysisHelper.getOpndValue(address, 0))
         return funcName
     
     # we don't know the number of args to a given function and we're not considering SSE args
@@ -1443,19 +1572,7 @@ class EmuHelper():
 
     # handle common runtime functions
     def _handleApiHooks(self, address, argv, funcName, userData):
-        # normalize funcName
-        # remove appended _n from IDA Pro names
-        funcName = re.sub(r"_[\d]+$", "", funcName)
-            
-        # remove appended _l for locale flavors of string functions
-        funcName = re.sub(r"_l$", "", funcName)
-        
-        # remove IDA Pro's j_ prefix
-        if funcName[:2] == "j_":
-            funcName = funcName[2:]
-
-        # remove prepended underscores
-        funcName = re.sub(r"^_+", "", funcName)
+        funcName = self.analysisHelper.normalizeFuncName(funcName, True)
         
         if funcName not in self.apiHooks:
             return False
@@ -1480,13 +1597,13 @@ class EmuHelper():
 
             # if strict mode is disabled, make instructions as we go as needed
             if not userData.get("strict", True):
-                if idc.print_insn_mnem(address) == "":
-                    self._forceMakeInsn(address)
+                if self.analysisHelperFramework == "Radare2" or self.analysisHelper.getMnem(address) == "":
+                    self.analysisHelper.makeInsn(address)
             
             if self.verbose > 0:
                 if self.verbose > 1:
                     logging.debug(self.getEmuState())
-                dis = idc.generate_disasm_line(address, 0)
+                dis = self.analysisHelper.getDisasmLine(address)
                 logging.debug("%s: %s" % (self.hexString(address), dis))
 
             # stop emulation if specified endAddr is reached
@@ -1506,22 +1623,21 @@ class EmuHelper():
 
             # otherwise, stop emulation when returning from function emulation began in
             elif ("funcStart" in userData and self.isRetInstruction(address) and
-                    idc.get_func_attr(address, idc.FUNCATTR_START) ==
+                    self.analysisHelper.getFuncStart(address) ==
                     userData["funcStart"]):
                 self.stopEmulation(userData)
                 return
             elif self.isRetInstruction(address) and self.arch == unicorn.UC_ARCH_ARM:
                 # check mode of return address if ARM
                 retAddr = self.getEmuPtr(self.getRegVal("LR"))
-                if self.isThumbMode(retAddr):
+                if self.analysisHelper.isThumbMode(retAddr):
                     userData["changeThumbMode"] = True
 
-            if (idc.print_insn_mnem(address) in self.callMnems or
-                    (idc.print_insn_mnem(address) == "B" and
-                     idc.get_name_ea_simple(idc.print_operand(address, 0)) ==
-                     idc.get_func_attr(
-                        idc.get_name_ea_simple(idc.print_operand(address, 0)),
-                        idc.FUNCATTR_START))):
+            if (self.analysisHelper.getMnem(address).upper() in self.callMnems or
+                    (self.analysisHelper.getMnem(address).upper() == "B" and
+                     self.analysisHelper.getNameAddr(self.analysisHelper.getOperand(address, 0)) ==
+                     self.analysisHelper.getFuncStart(
+                        self.analysisHelper.getNameAddr(self.analysisHelper.getOperand(address, 0))))):
                         
                 funcName = self.getCallTargetName(address)
                 if userData["callHook"]:
@@ -1532,11 +1648,10 @@ class EmuHelper():
                     
                 # if the pc has been changed by the hook, don't skip instruction and undo the change
                 if self.getRegVal("pc") != userData["currAddr"]:
-                    # get IDA's SP delta value for next instruction to adjust stack accordingly since we are skipping this
+                    # get SP delta value for next instruction to adjust stack accordingly since we are skipping this
                     # instruction
-                    if userData["func_t"] is not None:
-                        uc.reg_write(self.regs["sp"], self.getRegVal("sp") +
-                                    idaapi.get_sp_delta(userData["func_t"], self.getRegVal("pc")))
+                    uc.reg_write(self.regs["sp"], self.getRegVal("sp") +
+                                    self.analysisHelper.getSpDelta(self.getRegVal("pc")))
                     return
                  
                 if userData["hookApis"] and self._handleApiHooks(address, self.getArgv(), funcName, userData):
@@ -1544,24 +1659,26 @@ class EmuHelper():
                 
                 # skip calls if specified or there are no instructions to emulate at destination address
                 if (userData["skipCalls"] is True or
-                        (idc.get_operand_type(address, 0) == 7 and
-                         str(uc.mem_read(idc.get_operand_value(address, 0), self.size_pointer)) ==
+                        (self.analysisHelper.getOpndType(address, 0) == self.analysisHelper.o_near and
+                         str(uc.mem_read(self.analysisHelper.getOpndValue(address, 0), self.size_pointer)) ==
                          "\x00" * self.size_pointer)):
                     self.skipInstruction(userData)
             # handle x86 instructions moving import pointers to a register
-            elif (idc.print_insn_mnem(address) == "mov" and 
-                  idc.get_operand_type(address, 1) == 2 and 
-                  idc.get_operand_type(address, 0) == 1 and
-                  len(idc.print_operand(address, 0)) == 3 and
-                  idc.print_operand(address, 1)[:3] == "ds:" and 
-                  str(uc.mem_read(idc.get_operand_value(address, 1), self.size_pointer)) ==
-                  "\x00" * self.size_pointer):             
-                  uc.reg_write(self.regs[idc.print_operand(address, 0)], idc.get_operand_value(address, 1))
+            elif (self.analysisHelper.getMnem(address).lower() == "mov" and 
+                  self.analysisHelper.getOpndType(address, 1) == self.analysisHelper.o_mem and 
+                  self.analysisHelper.getOpndType(address, 0) == self.analysisHelper.o_reg and
+                  (len(self.analysisHelper.getOperand(address, 0)) == 3 and
+                  (self.analysisHelper.getOperand(address, 1)[:3] == "ds:" or 
+                  "sym.imp." in self.analysisHelper.getOperand(address, 1)) and 
+                  str(uc.mem_read(self.analysisHelper.getOpndValue(address, 1), self.size_pointer)) ==
+                  "\x00" * self.size_pointer)):             
+                  uc.reg_write(self.regs[self.analysisHelper.getOperand(address, 0)], 
+                               self.analysisHelper.getOpndValue(address, 1))
                   self.skipInstruction(userData)
 
         except Exception as err:
-            logging.debug("exception in emulateRange_codehook @%s: %s" % (self.hexString(address), str(err)))
-            print("exception in emulateRange_codehook @%s: %s" % (self.hexString(address), str(err)))
+            logging.debug("exception in emulateRangeCodehook @%s: %s" % (self.hexString(address), str(err)))
+            print("exception in emulateRangeCodehook @%s: %s" % (self.hexString(address), str(err)))
             self.stopEmulation(userData)
 
     # instruction hook used by emulateBytes function
@@ -1584,8 +1701,8 @@ class EmuHelper():
                 return
 
         except Exception as err:
-            logging.debug("exception in emulateBytes_codehook @%s: %s" % (self.hexString(address), str(err)))
-            print("exception in emulateBytes_codehook @%s: %s" % (self.hexString(address), str(err)))
+            logging.debug("exception in emulateBytesCodehook @%s: %s" % (self.hexString(address), str(err)))
+            print("exception in emulateBytesCodehook @%s: %s" % (self.hexString(address), str(err)))
             self.stopEmulation(userData)
 
     # this instruction hook is used by the iterate feature, forces execution down a specified path
@@ -1600,13 +1717,13 @@ class EmuHelper():
             if self.verbose > 0:
                 if self.verbose > 1:
                     logging.debug(self.getEmuState())
-                dis = idc.generate_disasm_line(address, 0)
+                dis = self.analysisHelper.getDisasmLine(address)
                 logging.debug("%s: %s" % (self.hexString(address), dis))
             if self.arch == unicorn.UC_ARCH_ARM:
                 # since there are lots of bad branches during emulation and we are forcing it anyways
-                if idc.print_insn_mnem(address)[:3] in ["TBB", "TBH"]:
+                if self.analysisHelper.getMnem(address)[:3].upper() in ["TBB", "TBH"]:
                     # skip over interleaved jump table
-                    nextInsnAddr = self._scanForCode(address + size)
+                    nextInsnAddr = self.analysisHelper.skipJumpTable(address + size)
                     self.changeProgramCounter(userData, nextInsnAddr)
                     return
             elif userData.get("strict", True) and self._isBadBranch(userData):
@@ -1615,8 +1732,7 @@ class EmuHelper():
 
             flow, paths = userData["targetInfo"][userData["targetVA"]]
             # check if we are out of our block bounds or re-entering our block in a loop
-            bbEnd = idc.prev_head(
-                flow[paths[self.pathIdx][self.blockIdx]][1], idc.get_inf_attr(idc.INF_MIN_EA))
+            bbEnd = flow[paths[self.pathIdx][self.blockIdx]][1]
             bbStart = flow[paths[self.pathIdx][self.blockIdx]][0]
             if address == bbStart and self.enteredBlock is True:
                 if self.blockIdx < len(paths[self.pathIdx]) - 1:
@@ -1659,9 +1775,9 @@ class EmuHelper():
             if address == bbStart:
                 self.enteredBlock = True
             # possibly a folded instruction or invalid instruction
-            if idc.print_insn_mnem(address) == "":
-                if idc.print_insn_mnem(address + size) == "":
-                    if idc.print_insn_mnem(address + size * 2) == "":
+            if self.analysisHelper.getMnem(address) == "":
+                if self.analysisHelper.getMnem(address + size) == "":
+                    if self.analysisHelper.getMnem(address + size * 2) == "":
                         logging.debug(
                             "invalid instruction encountered @%s, bailing.." % self.hexString(address))
                         self.stopEmulation(userData)
@@ -1687,12 +1803,11 @@ class EmuHelper():
                     self.hexString(address), self.hexString(userData["targetVA"])))
                 self._targetHit(address, userData)
 
-            if (idc.print_insn_mnem(address) in self.callMnems or
-                (idc.print_insn_mnem(address) == "B" and
-                 idc.get_name_ea_simple(idc.print_operand(address, 0)) ==
-                 idc.get_func_attr(
-                 idc.get_name_ea_simple(idc.print_operand(address, 0)),
-                 idc.FUNCATTR_START))):
+            if (self.analysisHelper.getMnem(address).upper() in self.callMnems or
+                (self.analysisHelper.getMnem(address).upper() == "B" and
+                 self.analysisHelper.getNameAddr(self.analysisHelper.getOperand(address, 0)) ==
+                 self.analysisHelper.getFuncStart(
+                 self.analysisHelper.getNameAddr(self.analysisHelper.getOperand(address, 0))))):
                  
                 funcName = self.getCallTargetName(address)
                 if userData["callHook"]:
@@ -1704,10 +1819,10 @@ class EmuHelper():
 
                 # if the pc has been changed by the hook, don't skip instruction and undo the change
                 if self.getRegVal("pc") != userData["currAddr"]:
-                    # get IDA's SP delta value for next instruction to adjust stack accordingly since we are skipping this
+                    # get SP delta value for next instruction to adjust stack accordingly since we are skipping this
                     # instruction
                     uc.reg_write(self.regs["sp"], self.getRegVal("sp") +
-                                 idaapi.get_sp_delta(userData["func_t"], self.getRegVal("pc")))
+                                 self.analysisHelper.getSpDelta(self.getRegVal("pc")))
                     return
                 
                 if userData["hookApis"] and self._handleApiHooks(address, self.getArgv(), funcName, userData):
@@ -1727,15 +1842,10 @@ class EmuHelper():
             print("exception in _guidedHook @%s: %s" % (self.hexString(address), e))
             self.stopEmulation(userData)
 
-    # scans ahead from address until IDA finds an instruction
-    def _scanForCode(self, address):
-        while idc.print_insn_mnem(address) == "":
-            address = idc.next_head(address, idc.get_inf_attr(idc.INF_MAX_EA))
-        return address
 
     # checks ARM mode for address and aligns address accordingly
     def _handleThumbMode(self, address):
-        if self.isThumbMode(address):
+        if self.analysisHelper.isThumbMode(address):
             self.uc.reg_write(self.regs["pc"], self.getRegVal("pc") | 1)
             self.mode = unicorn.UC_MODE_THUMB
         else:
@@ -1752,32 +1862,25 @@ class EmuHelper():
             print("exception in targetCallback function @%s: %s" % (self.hexString(address), str(e)))
         userData["visitedTargets"].append(address)
 
+    # this only works for IDA Pro since radare2 will always disassemble
     def _isBadBranch(self, userData):
         if self.arch == unicorn.UC_ARCH_ARM64:
-            if (idc.print_insn_mnem(userData["currAddr"]) in ["BR", "BREQ"] and
-                    idc.get_operand_type(userData["currAddr"], 0) == 1):
-                if (idc.print_insn_mnem(
-                        self.uc.reg_read(
-                        self.regs[idc.print_operand(userData["currAddr"], 0)]
+            if (self.analysisHelper.getMnem(userData["currAddr"]).upper() in ["BR", "BREQ"] and
+                    self.analysisHelper.getOpndType(userData["currAddr"], 0) == self.analysisHelper.o_reg):
+                if (self.analysisHelper.getMnem(
+                        self.getRegVal(self.analysisHelper.getOperand(userData["currAddr"], 0)
                         ))) == "":
                     return True
         elif self.arch == unicorn.UC_ARCH_X86:
-            if (idc.print_insn_mnem(userData["currAddr"]) == "jmp" and
-                    idc.get_operand_type(userData["currAddr"], 0) == 1):
-                if (idc.print_insn_mnem
-                   (self.uc.reg_read(self.regs[idc.print_operand(userData["currAddr"], 0)])) == ""):
+            if (self.analysisHelper.getMnem(userData["currAddr"]).lower() == "jmp" and
+                    self.analysisHelper.getOpndType(userData["currAddr"], 0) == self.analysisHelper.o_reg):
+                if (self.analysisHelper.getMnem
+                   (self.getRegVal(self.analysisHelper.getOperand(userData["currAddr"], 0))) == ""):
                     logging.debug("bad branch detected @%s" % self.hexString(userData["currAddr"]))
                     return True
         return False
     
-    def _forceMakeInsn(self, address):
-        if idc.create_insn(address) == 0:
-            idc.del_items(address, idc.DELIT_EXPAND)
-            idc.create_insn(address)
-        idc.auto_wait()
-
-            
-        
+    
     # recursively searches control flow graph dict returned by _explore for a  
     # single path from currentNode to target basic block, check path parameter upon return
     def _findPathFromGraph(self, path, graph, currentNode, target):
@@ -1842,8 +1945,8 @@ class EmuHelper():
         for region in self.uc.mem_regions():
             if region[1] > highest:
                 highest = region[1]
-        for segVA in idautils.Segments():
-            endVA = idc.get_segm_end(segVA)
+        for segVA in self.analysisHelper.getSegments():
+            endVA = self.analysisHelper.getSegEnd(segVA)
             if endVA > highest:
                 highest = endVA
         highest += PAGESIZE
