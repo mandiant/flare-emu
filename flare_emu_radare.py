@@ -369,4 +369,4 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         self.r.cmd("fs symbols; f %s %d %d; fs *" % (name, size, addr))
 
     def setComment(self, addr, comment, repeatable=False):
-        self.r.cmd("CC %s @%d" % (comment, addr))
+        self.r.cmd("CC base64:%s @%d" % (base64.b64decode(comment), addr))

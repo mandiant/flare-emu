@@ -26,6 +26,7 @@ import struct
 import re
 import flare_emu_hooks
 import types
+import sys
 
 PAGESIZE = 0x1000
 PAGEALIGNCHECK = 0xfff
@@ -270,6 +271,8 @@ class EmuHelper():
                 return
             self.analysisHelper = flare_emu_ida.IdaProAnalysisHelper()
             self.analysisHelperFramework = "IDA Pro"
+            import idaapi
+            
             
 
         self.initEmuHelper()
@@ -343,11 +346,11 @@ class EmuHelper():
     # call emulateRange using selected instructions in IDA Pro as start/end addresses
     def emulateSelection(self, registers=None, stack=None, instructionHook=None, callHook=None,
                      memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, count=0):
-        if idaapi:
-            selection = idaapi.read_selection()
-            if selection[0]:
-                self.emulateRange(selection[1], selection[2], registers, stack, instructionHook, 
-                                  callHook, memAccessHook, hookData, skipCalls, hookApis, count=count)
+        import idaapi
+        selection = idaapi.read_selection()
+        if selection[0]:
+            self.emulateRange(selection[1], selection[2], registers, stack, instructionHook, 
+                              callHook, memAccessHook, hookData, skipCalls, hookApis, count=count)
         else:
             print("emulateSelection is only available for IDA Pro")
 
@@ -1629,9 +1632,10 @@ class EmuHelper():
                 return
             elif self.isRetInstruction(address) and self.arch == unicorn.UC_ARCH_ARM:
                 # check mode of return address if ARM
-                retAddr = self.getEmuPtr(self.getRegVal("LR"))
-                if self.analysisHelper.isThumbMode(retAddr):
-                    userData["changeThumbMode"] = True
+                #retAddr = self.getEmuPtr(self.getRegVal("LR"))
+                #if self.analysisHelper.isThumbMode(retAddr):
+                #    userData["changeThumbMode"] = True
+                userData["changeThumbMode"] = True
 
             if (self.analysisHelper.getMnem(address).upper() in self.callMnems or
                     (self.analysisHelper.getMnem(address).upper() == "B" and
