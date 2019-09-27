@@ -19,6 +19,7 @@ import idc
 import idaapi
 import idautils
 import objc2_analyzer
+import logging
 
 comments = ['[(NSString *)_myVar stringByAppendingString_]', 
             '[(SimpleClass2 *)self myVar]', 
@@ -76,7 +77,8 @@ selRefs = ["selRef_myVar",
            "selRef_func2",
            "selRef_func3:"]
            
-if __name__ == '__main__':
+if __name__ == '__main__':   
+    fmt = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
     info = idaapi.get_inf_structure()
     if info.procName == "metapc":
         if info.is_64bit():
@@ -106,8 +108,9 @@ if __name__ == '__main__':
             elif arch == "ARM64":
                 # for Link Time Optimized binaries we look for LDR instructions whose src operand
                 # begins with "=" to differentiate from non LTO binaries
-                # for non LTO binaries, we patch the ADRP instructions that reference the selrefs
-                if (idc.print_insn_mnem(x.frm) == "ADRP" or 
+                # for non LTO binaries, we patch the ADRP/ADRL instructions that reference the selrefs
+                if (idc.print_insn_mnem(x.frm) == "ADRP" or
+                    idc.print_insn_mnem(x.frm) == "ADRL" or
                         (idc.print_insn_mnem(x.frm)[:3] == "LDR" and 
                          idc.print_operand(x.frm, 1)[0] == "=")):
                     selRefsXrefs[selRef].append(x.frm)
