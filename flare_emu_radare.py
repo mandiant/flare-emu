@@ -39,7 +39,6 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         # we have to gather all "i" related command info before loading project
         # because loading a project loses the binary and loading the binary
         # loses the project
-
         self.minimumAddr = sorted(map(lambda x: x['vaddr'], self.r.cmdj("iSj")))[0]
         sect = list(reversed(sorted(map(lambda x: (x['vaddr'], x['vsize']), self.r.cmdj("iSj")))))[0]
         self.maximumAddr = sect[0] + sect[1]

@@ -15,19 +15,20 @@
 ############################################
 
 from __future__ import print_function
-import idc
-import idaapi
-import idautils
 import flare_emu
+import sys
 
 from unicorn import UC_ARCH_X86, UC_MEM_READ, UC_MEM_WRITE
 
 testStrings = ["HELLO", "GOODBYE", "TEST"]
 
 def decode(argv):
-    myEH = flare_emu.EmuHelper()
+    if len(sys.argv) == 2:
+        myEH = flare_emu.EmuHelper(samplePath=sys.argv[1])
+    else:
+        myEH = flare_emu.EmuHelper()
     print("testing emulateRange feature for _xorCrypt function")
-    mu = myEH.emulateRange(idc.get_name_ea_simple("_xorCrypt"), registers = {"arg1":argv[0], "arg2":argv[1], 
+    mu = myEH.emulateRange(myEH.analysisHelper.getNameAddr("_xorCrypt"), registers = {"arg1":argv[0], "arg2":argv[1], 
                            "arg3":argv[2], "arg4":argv[3]})
     return myEH.getEmuString(argv[0])
     
@@ -49,10 +50,10 @@ def iterateHook(eh, address, argv, userData):
         print("printf test passed")
 
 
-def test_memory_access_hook():
+def test_memory_access_hook(eh):
     """ Compare memory access identified in IDA and hooked instructions. """
     print("\ntesting memory access hook")
-    main_va = idc.get_name_ea_simple("_main")
+    main_va = eh.analysisHelper.getNameAddr("_main")
     userData = dict()
     userData["mov_types_hook"] = dict()
     eh.emulateRange(main_va, memAccessHook=get_mov_types_hook, hookData=userData)
@@ -99,10 +100,13 @@ def get_mov_types_ida(va):
 
 
 if __name__ == '__main__':
-    eh = flare_emu.EmuHelper()
+    if len(sys.argv) == 2:
+        eh = flare_emu.EmuHelper(samplePath=sys.argv[1])
+    else:
+        eh = flare_emu.EmuHelper()
     print("testing iterate feature for printf function")
-    eh.iterate(idc.get_name_ea_simple("_printf"), iterateHook, callHook = ch)
+    eh.iterate(eh.analysisHelper.getNameAddr("_printf"), iterateHook, callHook = ch)
 
     # currently only test on x86/AMD64
-    if eh.arch == UC_ARCH_X86:
-        test_memory_access_hook()
+    if eh.arch == UC_ARCH_X86 and eh.analysisHelperFramework == "IDA Pro":
+        test_memory_access_hook(eh)
