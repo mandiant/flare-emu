@@ -60,7 +60,7 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
     def skipJumpTable(self, addr):
         pass
 
-    def getMininumAddr(self):
+    def getMinimumAddr(self):
         return self.minimumAddr
 
     def getMaximumAddr(self):

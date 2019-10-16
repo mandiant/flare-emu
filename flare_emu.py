@@ -73,7 +73,7 @@ class AnalysisHelper(object):
     def skipJumpTable(self, addr):
         pass
 
-    def getMininumAddr(self):
+    def getMinimumAddr(self):
         pass
 
     def getMaximumAddr(self):
@@ -324,6 +324,8 @@ class EmuHelper():
                     "endAddr": endAddr, "callHook": callHook, "hookApis": hookApis, "count": count}
         if hookData:
             userData.update(hookData)
+        if userData["funcEnd"] is None:
+            userData["funcEnd"] = userData["endAddr"]
         mu = self.uc
         self._prepEmuContext(registers, stack)
         self.resetEmuHooks()
@@ -1394,7 +1396,7 @@ class EmuHelper():
     # reset emulator memory and rewrite binary segments to emulator memory, build new stack
     def reloadBinary(self):
         self.resetEmulatorMemory()
-        baseAddr = self.analysisHelper.getMininumAddr()
+        baseAddr = self.analysisHelper.getMinimumAddr()
         endAddr = self.analysisHelper.getMaximumAddr()
         self.baseAddr = baseAddr
         memsize = endAddr - baseAddr

@@ -148,7 +148,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
     def skipJumpTable(self, addr):
         pass
 
-    def getMininumAddr(self):
+    def getMinimumAddr(self):
         return self.minimumAddr
 
     def getMaximumAddr(self):
@@ -160,7 +160,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     def getCString(self, addr):
         buf = ""
-        while address >= self.getMininumAddr() and address < self.getMaximumAddr() and self.getBytes(address, 1) != "\x00":
+        while address >= self.getMinimumAddr() and address < self.getMaximumAddr() and self.getBytes(address, 1) != "\x00":
             buf += self.getBytes(address, 1)
             address += 1
         return buf
@@ -176,13 +176,13 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         
 
     def getWordValue(self, addr):
-        pass
+        return self.r.cmdj("pv2j 1 @%d" % addr)['value']
 
     def getDwordValue(self, addr):
-        pass
+        return self.r.cmdj("pv4j 1 @%d" % addr)['value']
 
     def getQWordValue(self, addr):
-        pass
+        return self.r.cmdj("pv8j 1 @%d" % addr)['value']
 
     def isThumbMode(self, addr):
         return self.r.cmdj("afij @%d" % addr)[0]['bits'] == 16
@@ -310,8 +310,6 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         return None
 
     def makeInsn(self, addr):
-        # size = self.r.cmdj("pdj 1 @%d" % addr)[0]['size']
-        # self.r.cmd("C- %d @%d" % (size, addr))
         pass
 
     def createFunction(self, addr):
