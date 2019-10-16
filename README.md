@@ -2,7 +2,7 @@
 
 # [flare-emu](#flare-emu)
 
-**flare-emu** marries supported binary analysis frameworks, such as [IDA Pro](https://www.hex-rays.com/products/ida/) and [Radare2](https://rada.re/r/), with [Unicorn](https://www.unicorn-engine.org/)’s emulation framework to provide the user with an easy to use and flexible interface for scripting emulation tasks. It is designed to handle all the housekeeping of setting up a flexible and robust emulator for its supported architectures so that you can focus on solving your code analysis problems. Currently, **flare-emu** supports the `x86`, `x86_64`, `ARM`, and `ARM64` architectures.
+**flare-emu** marries a supported binary analysis framework, such as [IDA Pro](https://www.hex-rays.com/products/ida/) or [Radare2](https://rada.re/r/), with [Unicorn](https://www.unicorn-engine.org/)’s emulation framework to provide the user with an easy to use and flexible interface for scripting emulation tasks. It is designed to handle all the housekeeping of setting up a flexible and robust emulator for its supported architectures so that you can focus on solving your code analysis problems. Currently, **flare-emu** supports the `x86`, `x86_64`, `ARM`, and `ARM64` architectures.
 
 It currently provides five different interfaces to serve your emulation needs, along with a slew of related helper and utility functions.
 
