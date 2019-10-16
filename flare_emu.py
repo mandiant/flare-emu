@@ -194,7 +194,6 @@ class AnalysisHelper(object):
         pass
 
     def normalizeFuncName(self, funcName, extra=False):
-        # normalize funcName
         # remove Radare2's flag space prefixes
         if funcName[:4] == "sym.":
             funcName = funcName[4:]

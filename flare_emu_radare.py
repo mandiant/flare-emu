@@ -108,8 +108,11 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         except:
             return None
 
-    def getFuncName(self, addr):
-        return self.getName(self.getFuncStart(addr))
+    def getFuncName(self, addr, normalized=True):
+        if normalized:
+            return self.normalizeFuncName(self.getName(self.getFuncStart(addr)))
+        else:
+            return self.getName(self.getFuncStart(addr))
 
     def getMnem(self, addr):
         try:

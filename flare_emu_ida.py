@@ -40,8 +40,11 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
             return None
         return ret
 
-    def getFuncName(self, addr):
-        return idc.get_func_name(addr)
+    def getFuncName(self, addr, normalized=True):
+        if normalized:
+            return self.normalizeFuncName(idc.get_func_name(addr))
+        else:
+            return idc.get_func_name(addr)
 
     def getMnem(self, addr):
         return idc.print_insn_mnem(addr)
