@@ -267,7 +267,7 @@ class EmuHelper():
             try:
                 import flare_emu_ida
             except:
-                print("error importing flare_emu_ida, either specify samplePath to use radare2 or run under IDA Pro 7+")
+                print("error importing flare_emu_ida: specify samplePath to use radare2 or run under IDA Pro 7+")
                 return
             self.analysisHelper = flare_emu_ida.IdaProAnalysisHelper()
             self.analysisHelperFramework = "IDA Pro"
@@ -334,8 +334,8 @@ class EmuHelper():
         if instructionHook:
             self.h_userhook = mu.hook_add(unicorn.UC_HOOK_CODE, instructionHook, userData)
         if memAccessHook:
-            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, memAccessHook,
-                                                    userData)
+            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, 
+                                                    memAccessHook, userData)
         self.h_memhook = mu.hook_add(unicorn.UC_HOOK_MEM_READ_UNMAPPED | unicorn.UC_HOOK_MEM_WRITE_UNMAPPED |
                                      unicorn.UC_HOOK_MEM_FETCH_UNMAPPED, self._hookMemInvalid, userData)
         self.h_inthook = mu.hook_add(
@@ -427,8 +427,8 @@ class EmuHelper():
         if instructionHook:
             self.h_userhook = self.uc.hook_add(unicorn.UC_HOOK_CODE, instructionHook, userData)
         if memAccessHook:
-            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, memAccessHook,
-                                                    userData)
+            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, 
+                                                    memAccessHook, userData)
         self.h_memhook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ_UNMAPPED | unicorn.UC_HOOK_MEM_WRITE_UNMAPPED |
                                           unicorn.UC_HOOK_MEM_FETCH_UNMAPPED, self._hookMemInvalid, userData)
         self.h_inthook = self.uc.hook_add(
@@ -503,7 +503,8 @@ class EmuHelper():
                         maxNodes=MAXNODESEARCH):
         flowchart = self.analysisHelper.getFlowChart(target)
         # targets are all function ends
-        targets = [self.analysisHelper.getBlockEndInsnAddr(bb.start_ea, flowchart) for bb in self.analysisHelper.getTerminatingBBs(flowchart)]
+        targets = [self.analysisHelper.getBlockEndInsnAddr(bb.start_ea, flowchart) for bb 
+                   in self.analysisHelper.getTerminatingBBs(flowchart)]
 
         targetInfo = {}
         for i, t in enumerate(targets):
@@ -531,8 +532,8 @@ class EmuHelper():
         if instructionHook:
             self.h_userhook = self.uc.hook_add(unicorn.UC_HOOK_CODE, instructionHook, userData)
         if memAccessHook:
-            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, memAccessHook,
-                                                    userData)
+            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, 
+                                                    memAccessHook, userData)
         self.h_memhook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ_UNMAPPED | unicorn.UC_HOOK_MEM_WRITE_UNMAPPED |
                                           unicorn.UC_HOOK_MEM_FETCH_UNMAPPED, self._hookMemInvalid, userData)
         self.h_inthook = self.uc.hook_add(
@@ -572,7 +573,8 @@ class EmuHelper():
             cnt += 1
 
     # simply emulates to the end of whatever bytes are provided
-    # these bytes are not loaded into IDB, only emulator memory; analysisHelper APIs are not available for use in hooks here
+    # these bytes are not loaded into IDB, only emulator memory
+    # analysisHelper APIs are not available for use in hooks here
     def emulateBytes(self, bytes, registers=None, stack=None, baseAddr=0x400000, instructionHook=None,
                      memAccessHook=None, hookData=None):
         if registers is None:
@@ -593,8 +595,8 @@ class EmuHelper():
         if instructionHook:
             self.h_userhook = mu.hook_add(unicorn.UC_HOOK_CODE, instructionHook, userData)
         if memAccessHook:
-            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, memAccessHook,
-                                                    userData)
+            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, 
+                                                    memAccessHook, userData)
         self.h_memhook = mu.hook_add(unicorn.UC_HOOK_MEM_READ_UNMAPPED | unicorn.UC_HOOK_MEM_WRITE_UNMAPPED |
                                      unicorn.UC_HOOK_MEM_FETCH_UNMAPPED, self._hookMemInvalid, userData)
         self.h_inthook = mu.hook_add(
@@ -652,8 +654,8 @@ class EmuHelper():
         if instructionHook:
             self.h_userhook = mu.hook_add(unicorn.UC_HOOK_CODE, instructionHook, userData)
         if memAccessHook:
-            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, memAccessHook,
-                                                    userData)
+            self.h_memaccesshook = self.uc.hook_add(unicorn.UC_HOOK_MEM_READ | unicorn.UC_HOOK_MEM_WRITE, 
+                                                    memAccessHook, userData)
         self.h_memhook = mu.hook_add(unicorn.UC_HOOK_MEM_READ_UNMAPPED | unicorn.UC_HOOK_MEM_WRITE_UNMAPPED |
                                      unicorn.UC_HOOK_MEM_FETCH_UNMAPPED, self._hookMemInvalid, userData)
         self.h_inthook = mu.hook_add(
@@ -679,22 +681,25 @@ class EmuHelper():
         if self.analysisHelper.getMnem(addr)[:3].lower() == "ret":
             return True
 
-        if self.analysisHelper.getMnem(addr).lower() in ["bx", "b"] and self.analysisHelper.getOperand(addr, 0).lower() == "lr":
+        if (self.analysisHelper.getMnem(addr).lower() in ["bx", "b"] and 
+            self.analysisHelper.getOperand(addr, 0).lower() == "lr"):
             return True
 
-        if self.analysisHelper.getMnem(addr).lower() == "pop" and "pc" in self.analysisHelper.getDisasmLine(addr).lower():
+        if (self.analysisHelper.getMnem(addr).lower() == "pop" and 
+            "pc" in self.analysisHelper.getDisasmLine(addr).lower()):
             return True
 
         return False
 
     # call from an emulation hook to skip the current instruction, moving pc to next instruction
-    # useAnalysisHelper option was added to handle cases where IDA folds multiple instructions (Radare2 doesn't do this)
+    # useAnalysisHelper option added to handle cases where IDA folds multiple instructions (Radare2 doesn't do this)
     # do not call multiple times in a row, depends on userData being updated by hook
     def skipInstruction(self, userData, useAnalysisHelper=False):
         if self.arch == unicorn.UC_ARCH_ARM:
             userData["changeThumbMode"] = True
         if useAnalysisHelper:
-            self.uc.reg_write(self.regs["pc"], userData["currAddr"] + self.analysisHelper.getInsnSize(userData["currAddr"]))
+            self.uc.reg_write(self.regs["pc"], 
+                              userData["currAddr"] + self.analysisHelper.getInsnSize(userData["currAddr"]))
         else:
             self.uc.reg_write(
                 self.regs["pc"], userData["currAddr"] + userData["currAddrSize"])
@@ -1769,7 +1774,8 @@ class EmuHelper():
                 logging.debug("%s is outside of block #%d (%s -> %s), forcing PC to %s" %
                               (self.hexString(address),
                                self.blockIdx, self.hexString(bbStart),
-                               self.hexString(bbEnd), self.hexString(flow[paths[self.pathIdx][self.blockIdx + 1]][0])))
+                               self.hexString(bbEnd), 
+                               self.hexString(flow[paths[self.pathIdx][self.blockIdx + 1]][0])))
                 # force PC to follow paths
                 uc.reg_write(self.regs["pc"], flow[paths[self.pathIdx][self.blockIdx + 1]][0])
                 self.blockIdx += 1

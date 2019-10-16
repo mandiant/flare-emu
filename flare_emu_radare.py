@@ -82,7 +82,8 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     def _additionalAnalysis(self):
         # label j_ functions
-        candidates = map(lambda x: x['offset'] ,filter(lambda y: y['nbbs'] == 1 and y['size'] <= 10, self.r.cmdj("aflj")))
+        candidates = map(lambda x: x['offset'] ,filter(lambda y: y['nbbs'] == 1 and y['size'] <= 10, 
+                         self.r.cmdj("aflj")))
         for candidate in candidates:
             if self._getBasicBlocks(candidate)[0]['ninstr'] == 1 and self.getMnem(candidate) == "jmp":
                 op = self._getOpndDict(candidate, 0)
@@ -160,7 +161,9 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     def getCString(self, addr):
         buf = ""
-        while address >= self.getMinimumAddr() and address < self.getMaximumAddr() and self.getBytes(address, 1) != "\x00":
+        while (address >= self.getMinimumAddr() 
+               and address < self.getMaximumAddr() 
+               and self.getBytes(address, 1) != "\x00"):
             buf += self.getBytes(address, 1)
             address += 1
         return buf
@@ -188,24 +191,27 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         return self.r.cmdj("afij @%d" % addr)[0]['bits'] == 16
 
     def getSegName(self, addr):
+        flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
         try:
-            return filter(lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr, self.r.cmdj("iSj"))[0]['name']
+            return filter(flt, self.r.cmdj("iSj"))[0]['name']
         except:
             # project issues
-            return filter(lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr, self.segInfo)[0]['name']
+            return filter(flt, self.segInfo)[0]['name']
 
     def getSegStart(self, addr):
+        flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
         try:
-            return filter(lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr, self.r.cmdj("iSj"))[0]['vaddr']
+            return filter(flt, self.r.cmdj("iSj"))[0]['vaddr']
         except:
-            return filter(lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr, self.segInfo)[0]['vaddr']
+            return filter(flt, self.segInfo)[0]['vaddr']
 
     def getSegEnd(self, addr):
+        flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
         try:
-            seg = filter(lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr, self.r.cmdj("iSj"))[0]
+            seg = filter(flt, self.r.cmdj("iSj"))[0]
             return seg['vaddr'] + seg['vsize']
         except:
-            seg = filter(lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr, self.segInfo)[0]
+            seg = filter(flt, self.segInfo)[0]
             return seg['vaddr'] + seg['vsize']
 
     def getSegSize(self, addr, segEnd):
@@ -320,7 +326,12 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         flowchart = []
         id = 0    
         for bb in bbs:
-            flowchart.append(BasicBlock(flowchart, id, bb['addr'], bb['size'], bb.get('jump', -1), bb.get('fail', -1)))
+            flowchart.append(BasicBlock(flowchart, 
+                                        id, 
+                                        bb['addr'], 
+                                        bb['size'], 
+                                        bb.get('jump', -1), 
+                                        bb.get('fail', -1)))
             id += 1
         return flowchart
 
