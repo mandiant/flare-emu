@@ -131,8 +131,6 @@ The following is an incomplete list of some of the useful utility functions prov
 
 * `hexString(value)` - Returns a hexadecimal formatted string for the value. Useful for logging and print statements.
 
-* `getIDBString(address)` - Returns the string of characters located at an address in the IDB, up to a null terminator. Characters are not necessarily printable. Useful for retrieving strings without an emulation context.
-
 * `skipInstruction(userData, useAnalysisHelper=False)` - Call this from an emulation hook to skip the current instruction, moving the program counter to the next instruction. `useAnalysisHelper` option was added to handle cases where the binary analysis framework folds multiple instructions into one pseudo instruction and you would like to skip all of them. This function cannot be called multiple times from a single instruction hook to skip multiple instructions. To skip multiple instructions, it is recommended not to write to the program counter directly if you are emulating ARM code as this might cause problems with thumb mode. Instead, try `EmuHelper`'s `changeProgramCounter` API (described below).
 
 * `changeProgramCounter(userData, newAddress)` - Call this from an emulation hook to change the value of the program counter register. This API takes care of thumb mode tracking for the ARM architecture.
