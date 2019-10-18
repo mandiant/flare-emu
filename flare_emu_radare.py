@@ -5,6 +5,7 @@ import flare_emu
 import re
 import ntpath
 import base64
+import logging
 
 class BasicBlock():
     def __init__(self, flowchart, id, addr, size, jump, fail):
@@ -27,33 +28,27 @@ class BasicBlock():
 
 class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
     # def __init__(self, path, useProjects=True, projectName=None):
-    def __init__(self, path):
+    def __init__(self, path, eh):
         super(Radare2AnalysisHelper, self).__init__()
         try:
+            self.eh = eh
             self.r = r2pipe.open(path)
             self.path = path
         except:
             print("error loading %s in radare2" % path)
             exit(1)
 
-        # we have to gather all "i" related command info before loading project
-        # because loading a project loses the binary and loading the binary
-        # loses the project
-        self.minimumAddr = sorted(map(lambda x: x['vaddr'], self.r.cmdj("iSj")))[0]
-        sect = list(reversed(sorted(map(lambda x: (x['vaddr'], x['vsize']), self.r.cmdj("iSj")))))[0]
-        self.maximumAddr = sect[0] + sect[1]
         info = self.r.cmdj("iAj")
         self.arch = info['bins'][0]['arch'].upper()
         self.bitness = info['bins'][0]['bits']
         self.filetype = self.r.cmdj("ij")['core']['format'].upper()
+        
         if self.filetype[:5] == "MACH0":
             self.filetype = "MACHO"
         elif self.filetype[:3] == "ELF":
             self.filetype = "ELF"
-
-        # backup segment info in case of project fail
-        self.segInfo = self.r.cmdj("iSj")
-        self.segments = map(lambda x: x['vaddr'], self.segInfo)
+        elif self.filetype[:2] == "PE":
+            self.filetype = "PE"
 
         # projects are quite broken at this time, so we will save this for
         # brighter days
@@ -85,10 +80,13 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         candidates = map(lambda x: x['offset'] ,filter(lambda y: y['nbbs'] == 1 and y['size'] <= 10, 
                          self.r.cmdj("aflj")))
         for candidate in candidates:
-            if self._getBasicBlocks(candidate)[0]['ninstr'] == 1 and self.getMnem(candidate) == "jmp":
-                op = self._getOpndDict(candidate, 0)
-                if op['type'] == "imm" and ".dll_" in self.getName(op['value']):
-                    self.setName(candidate, "j_" + self.normalizeFuncName(self.getName(op['value'])))
+            try:
+                if self._getBasicBlocks(candidate)[0]['ninstr'] == 1 and self.getMnem(candidate) == "jmp":
+                    op = self._getOpndDict(candidate, 0)
+                    if op['type'] == "imm" and ".dll_" in self.getName(op['value']):
+                        self.setName(candidate, "j_" + self.normalizeFuncName(self.getName(op['value'])))
+            except Exception as e:
+                logging.debug("Exception searching for trampoline functions, candidate %s: %s" % (self.eh.hexString(candidate), str(e)))
 
 
     def _getFileNameFromPath(self, path):
@@ -153,10 +151,23 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         pass
 
     def getMinimumAddr(self):
-        return self.minimumAddr
+        if self.filetype != "PE":
+            segmentCmd = self.r.cmdj("iSSj")
+        else:
+            segmentCmd = self.r.cmdj("iSj")
+        return sorted(filter(lambda y: y > 0, map(lambda x: x['vaddr'], segmentCmd)))[0]
 
     def getMaximumAddr(self):
-        return self.maximumAddr
+        if self.filetype != "PE":
+            segmentCmd = self.r.cmdj("iSSj")
+        else:
+            segmentCmd = self.r.cmdj("iSj")
+        maxAddr = 0
+        for seg in segmentCmd:
+            if seg['vaddr'] + seg['vsize'] > maxAddr:
+                maxAddr = seg['vaddr'] + seg['vsize']
+                
+        return maxAddr
 
     def getBytes(self, addr, size):
         # prz and pr seem to have problems, maybe due to certain unprintable characters going over the pipe
@@ -193,39 +204,98 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
     def isThumbMode(self, addr):
         return self.r.cmdj("afij @%d" % addr)[0]['bits'] == 16
 
-    def getSegName(self, addr):
+    # gets name of smallest of segments containing addr, unless smallest is set to False
+    def getSegmentName(self, addr, smallest=True):
+        if self.filetype != "PE":
+            segmentCmd = self.r.cmdj("iSSj")
+        else:
+            segmentCmd = self.r.cmdj("iSj")
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
         try:
-            return filter(flt, self.r.cmdj("iSj"))[0]['name']
+            if smallest:
+                return min(filter(flt, segmentCmd), key = lambda x: x['vsize'])['name']
+            else:
+                return max(filter(flt, segmentCmd), key = lambda x: x['vsize'])['name']
         except:
-            # project issues
-            return filter(flt, self.segInfo)[0]['name']
+            return ""
 
-    def getSegStart(self, addr):
+    def getSegmentStart(self, addr):
+        if self.filetype != "PE":
+            segmentCmd = self.r.cmdj("iSSj")
+        else:
+            segmentCmd = self.r.cmdj("iSj")
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
         try:
-            return filter(flt, self.r.cmdj("iSj"))[0]['vaddr']
+            return filter(flt, segmentCmd)[0]['vaddr']
         except:
-            return filter(flt, self.segInfo)[0]['vaddr']
+            return -1
 
-    def getSegEnd(self, addr):
+    def getSegmentEnd(self, addr):
+        if self.filetype != "PE":
+            segmentCmd = self.r.cmdj("iSSj")
+        else:
+            segmentCmd = self.r.cmdj("iSj")
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
         try:
-            seg = filter(flt, self.r.cmdj("iSj"))[0]
+            seg = filter(flt, segmentCmd)[0]
             return seg['vaddr'] + seg['vsize']
         except:
-            seg = filter(flt, self.segInfo)[0]
-            return seg['vaddr'] + seg['vsize']
+            return -1
 
-    def getSegSize(self, addr, segEnd):
-        # Radare2 fills in unknown bytes with null bytes
-        return segEnd - addr
+
+    def getSegmentSize(self, addr):
+        return self.getSegmentEnd(addr) - self.getSegmentStart(addr)
+        
+    # Radare2 fills in unknown bytes with null bytes
+    def getSegmentDefinedSize(self, addr):
+        return self.getSegmentSize(addr)
 
     def getSegments(self):
-        try:
-            return map(lambda x: x['vaddr'], self.r.cmdj("iSj"))
-        except:
-            return self.segments
+        if self.filetype != "PE":
+            segmentCmd = self.r.cmdj("iSSj")
+        else:
+            segmentCmd = self.r.cmdj("iSj")
+        return map(lambda x: x['vaddr'], segmentCmd)
+            
+    # if any of the section APIs fail, the address may still be a part of a segment
+    def getSectionName(self, addr, smallest=True):
+        flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
+        sections = filter(flt, self.r.cmdj("iSj"))
+        if len(sections) > 0:
+            if smallest:
+                return min(sections, key = lambda x: x['vsize'])['name']
+            else:
+                return max(sections, key = lambda x: x['vsize'])['name']
+        else:
+            return self.getSegmentName(addr)
+            
+
+    def getSectionStart(self, addr):
+        flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
+        sections = filter(flt, self.r.cmdj("iSj"))
+        if len(sections) > 0:
+            return sections[0]['vaddr']
+        else:
+            return self.getSegmentStart(addr)
+
+    def getSectionEnd(self, addr):
+        flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
+        sections = filter(flt, self.r.cmdj("iSj"))
+        if len(sections) > 0:
+            return sections[0]['vaddr'] + sections[0]['size']
+        else:
+            return self.getSegmentEnd(addr)
+
+    def getSectionSize(self, addr):
+        flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
+        sections = filter(flt, self.r.cmdj("iSj"))
+        if len(sections) > 0:
+            return sections[0]['size']
+        else:
+            return self.getSegmentSize(addr)
+
+    def getSections(self):
+        return map(lambda x: x['vaddr'], self.r.cmdj("iSj"))
 
     # gets disassembled instruction with names and comments as a string
     def getDisasmLine(self, addr):
@@ -380,4 +450,4 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         self.r.cmd("fs symbols; f %s %d %d; fs *" % (name, size, addr))
 
     def setComment(self, addr, comment, repeatable=False):
-        self.r.cmd("CCu base64:%s @%d" % (base64.b64decode(comment), addr))
+        self.r.cmd("CCu base64:%s @%d" % (base64.b64encode(comment), addr))

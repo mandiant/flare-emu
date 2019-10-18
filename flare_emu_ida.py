@@ -2,12 +2,12 @@ import idc
 import idaapi
 import idautils
 import flare_emu
+import logging
 
 class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
-    def __init__(self):
+    def __init__(self, eh):
         super(IdaProAnalysisHelper, self).__init__()
-        self.minimumAddr = idc.get_inf_attr(idc.INF_MIN_EA)
-        self.maximumAddr = idc.get_inf_attr(idc.INF_MAX_EA)
+        self.eh = eh
         info = idaapi.get_inf_structure()
         if info.procName == "metapc":
             self.arch = "X86"
@@ -64,10 +64,10 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
         pass
 
     def getMinimumAddr(self):
-        return self.minimumAddr
+        return idc.get_inf_attr(idc.INF_MIN_EA)
 
     def getMaximumAddr(self):
-        return self.maximumAddr
+        return idc.get_inf_attr(idc.INF_MAX_EA)
 
     def getBytes(self, addr, size):
         return idc.get_bytes(addr, size, False)
@@ -95,17 +95,19 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
     def isThumbMode(self, addr):
         return idc.get_sreg(addr, "T") == 1
 
-    def getSegName(self, addr):
+    def getSegmentName(self, addr):
         return idc.get_segm_name(addr)
 
-    def getSegStart(self, addr):
+    def getSegmentStart(self, addr):
         return idc.get_segm_start(addr)
 
-    def getSegEnd(self, addr):
+    def getSegmentEnd(self, addr):
         return idc.get_segm_end(addr)
 
-    def getSegSize(self, addr, segEnd):
+    def getSegmentDefinedSize(self, addr):
         size = 0
+        segEnd = self.getSegmentEnd(addr)
+        addr = self.getSegmentStart(addr)
         while idc.has_value(idc.get_full_flags(addr)):
             if addr >= segEnd:
                 break
@@ -113,9 +115,26 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
             addr += 1
         return size
 
-
     def getSegments(self):
         return idautils.Segments()
+        
+    def getSegmentSize(self, addr):
+        return self.getSegmentEnd(addr) - self.getSegmentStart(addr)
+        
+    def getSectionName(self, addr):
+        return self.getSegmentName(addr)
+
+    def getSectionStart(self, addr):
+        return self.getSegmentStart(addr)
+
+    def getSectionEnd(self, addr):
+        return self.getSegmentEnd(addr)
+
+    def getSectionSize(self, addr):
+        return self.getSegmentSize(addr)
+
+    def getSections(self):
+        return self.getSegments()
 
     # gets disassembled instruction with names and comments as a string
     def getDisasmLine(self, addr):

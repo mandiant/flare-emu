@@ -19,6 +19,7 @@
 from __future__ import print_function
 import flare_emu
 import sys
+import logging
 
 tests = {"from MultiByteToWideChar\r\n":["this is a test".encode("utf-16"), 15], 
          "from WideCharToMultiByte\r\n":["this is a test", 15], 
@@ -96,16 +97,21 @@ def wcsdupHook(eh, address, argv, funcName, userData):
     
     eh.uc.reg_write(eh.regs["ret"], 0)
 
-if __name__ == '__main__':   
+if __name__ == '__main__':     
+    #fmt = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
+    #logging.basicConfig(level=logging.DEBUG, filename="/Users/me/Documents/tracedebug", format=fmt)
+    #logging.basicConfig(level=logging.DEBUG, filename="c:\\users\\limited_user\\desktop\\tracedebug.txt", format=fmt)
+    # optional argument with sample path to test radare2 support
     if len(sys.argv) == 2:
         eh = flare_emu.EmuHelper(samplePath=sys.argv[1])
     else:
         eh = flare_emu.EmuHelper()
+        
+    eh.analysisHelper.setName(0x41141a, "printf")
     print("testing iterate feature for printf function")
     strcpyEa = eh.analysisHelper.getNameAddr("j_strcpy")
     eh.iterate(eh.analysisHelper.getNameAddr("printf"), iterateHook)
     eh.analysisHelper.setName(strcpyEa, "testname")
-    eh.analysisHelper.setName(0x41141a, "printf")
     eh.addApiHook("testname", "strcpy")
     eh.addApiHook("wcsdup", wcsdupHook)
     print("testing with renamed and redirected strcpy hook and new hook for wcsdup")

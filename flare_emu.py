@@ -100,19 +100,45 @@ class AnalysisHelper(object):
     def isThumbMode(self, addr):
         pass
 
-    def getSegName(self, addr):
+    # for segment/section related functions, IDA Pro calls everything segments
+    # while Radare2 maintains the distinction. PE's do not have segments, but sections,
+    # while ELFs and Mach-Os have both. We will maintain the distinction when the underlying
+    # framework supports it.
+    def getSegmentName(self, addr):
         pass
 
-    def getSegStart(self, addr):
+    def getSegmentStart(self, addr):
         pass
 
-    def getSegEnd(self, addr):
+    def getSegmentEnd(self, addr):
         pass
 
-    def getSegSize(self, addr):
+    # gets the number of defined bytes in the segment containing addr.
+    # used when loading the binary to determine how many bytes to copy
+    # to emulator memory from each segment, because IDA Pro may have
+    # undefined bytes.
+    def getSegmentDefinedSize(self, addr):
         pass
 
+    def getSegmentSize(self, addr):
+        pass
+        
     def getSegments(self):
+        pass
+        
+    def getSectionName(self, addr):
+        pass
+
+    def getSectionStart(self, addr):
+        pass
+
+    def getSectionEnd(self, addr):
+        pass
+
+    def getSectionSize(self, addr):
+        pass
+
+    def getSections(self):
         pass
 
     # gets disassembled instruction with names and comments as a string
@@ -260,7 +286,7 @@ class EmuHelper():
             except Exception as e:
                 print("error importing flare_emu_radare: %s" % e)
                 return
-            self.analysisHelper = flare_emu_radare.Radare2AnalysisHelper(samplePath)
+            self.analysisHelper = flare_emu_radare.Radare2AnalysisHelper(samplePath, self)
             self.analysisHelperFramework = "Radare2"
         else:
             try:
@@ -268,7 +294,7 @@ class EmuHelper():
             except:
                 print("error importing flare_emu_ida: specify samplePath to use radare2 or run under IDA Pro 7+")
                 return
-            self.analysisHelper = flare_emu_ida.IdaProAnalysisHelper()
+            self.analysisHelper = flare_emu_ida.IdaProAnalysisHelper(self)
             self.analysisHelperFramework = "IDA Pro"
             import idaapi
             
@@ -1410,10 +1436,12 @@ class EmuHelper():
         # map all binary segments as one memory region for easier management
         self.uc.mem_map(baseAddr & self.pageMask, memsize)
         for segVA in self.analysisHelper.getSegments():
-            segName = self.analysisHelper.getSegName(segVA)
-            endVA = self.analysisHelper.getSegEnd(segVA)
+            if segVA == 0:
+                continue
+            segName = self.analysisHelper.getSegmentName(segVA)
+            endVA = self.analysisHelper.getSegmentEnd(segVA)
             segSizeTotal = endVA - segVA
-            segSize = self.analysisHelper.getSegSize(segVA, endVA)
+            segSize = self.analysisHelper.getSegmentDefinedSize(segVA)
             logging.debug("bytes in seg: %s" % self.hexString(segSize))
             logging.debug("mapping segment %s: %s - %s" %
                           (segName, self.hexString(segVA), self.hexString(endVA)))
@@ -1484,9 +1512,9 @@ class EmuHelper():
         
     def getCallTargetName(self, address):
         if self.analysisHelper.getOpndType(address, 0) == self.analysisHelper.o_reg:
-            funcName = self.analysisHelper.getName(self.getRegVal(self.analysisHelper.getOperand(address, 0)))
+            funcName = self.analysisHelper.getFuncName(self.getRegVal(self.analysisHelper.getOperand(address, 0)))
         else:
-            funcName = self.analysisHelper.getName(self.analysisHelper.getOpndValue(address, 0))
+            funcName = self.analysisHelper.getFuncName(self.analysisHelper.getOpndValue(address, 0))
         return funcName
     
     # we don't know the number of args to a given function and we're not considering SSE args
@@ -1957,7 +1985,7 @@ class EmuHelper():
             if region[1] > highest:
                 highest = region[1]
         for segVA in self.analysisHelper.getSegments():
-            endVA = self.analysisHelper.getSegEnd(segVA)
+            endVA = self.analysisHelper.getSegmentEnd(segVA)
             if endVA > highest:
                 highest = endVA
         highest += PAGESIZE
