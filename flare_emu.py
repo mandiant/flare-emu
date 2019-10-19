@@ -1512,9 +1512,9 @@ class EmuHelper():
         
     def getCallTargetName(self, address):
         if self.analysisHelper.getOpndType(address, 0) == self.analysisHelper.o_reg:
-            funcName = self.analysisHelper.getFuncName(self.getRegVal(self.analysisHelper.getOperand(address, 0)))
+            funcName = self.analysisHelper.getName(self.getRegVal(self.analysisHelper.getOperand(address, 0)))
         else:
-            funcName = self.analysisHelper.getFuncName(self.analysisHelper.getOpndValue(address, 0))
+            funcName = self.analysisHelper.getName(self.analysisHelper.getOpndValue(address, 0))
         return funcName
     
     # we don't know the number of args to a given function and we're not considering SSE args
@@ -1610,7 +1610,6 @@ class EmuHelper():
     # handle common runtime functions
     def _handleApiHooks(self, address, argv, funcName, userData):
         funcName = self.analysisHelper.normalizeFuncName(funcName, True)
-        
         if funcName not in self.apiHooks:
             return False
         try:
