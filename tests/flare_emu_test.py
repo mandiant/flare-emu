@@ -8,7 +8,7 @@
 #
 # Author: James T. Bennett
 #
-# flare_emu_test.py is an IDApython script for testing flare-emu
+# flare_emu_test_hooks.py is a script for testing flare-emu with IDA Pro and Radare2
 #
 # Dependencies:
 # https://github.com/fireeye/flare-emu
@@ -103,10 +103,12 @@ if __name__ == '__main__':
     # optional argument with sample path to test radare2 support
     if len(sys.argv) == 2:
         eh = flare_emu.EmuHelper(samplePath=sys.argv[1])
+        printfName = "printf"
     else:
         eh = flare_emu.EmuHelper()
+        printfName = "_printf"
     print("testing iterate feature for printf function")
-    eh.iterate(eh.analysisHelper.getNameAddr("_printf"), iterateHook, callHook = ch)
+    eh.iterate(eh.analysisHelper.getNameAddr(printfName), iterateHook, callHook = ch)
 
     # currently only test on x86/AMD64
     if eh.arch == UC_ARCH_X86:

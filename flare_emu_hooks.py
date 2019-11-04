@@ -492,16 +492,17 @@ def _wcstombsHook(eh, address, argv, funcName, userData):
 def _multiByteToWideCharHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[2]):
         src = eh.getEmuString(argv[2])
-        if argv[3] == -1:
+        srcLen = eh.getSignedValue(argv[3])
+        if srcLen == -1:
             src += "\x00"
             maxBufSize = eh._checkMemSize(len(src) * 2, userData)
         else:
-            maxBufSize = eh._checkMemSize(argv[3] * 2, userData)
+            maxBufSize = eh._checkMemSize(srcLen * 2, userData)
         
-        if len(src) < argv[3]:
+        if len(src) < srcLen:
             src += "\x00"
-        elif argv[3] != -1:
-            src = src[:argv[3]]
+        elif srcLen != -1:
+            src = src[:srcLen]
             
         if argv[5] == 0:
             eh.uc.reg_write(eh.regs["ret"], len(src) * 2)
@@ -523,16 +524,17 @@ def _multiByteToWideCharHook(eh, address, argv, funcName, userData):
 def _wideCharToMultiByteHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[2]):
         src = eh.getEmuWideString(argv[2]).decode("utf-16")
-        if argv[3] == -1:
+        srcLen = eh.getSignedValue(argv[3])
+        if srcLen == -1:
             src += "\x00"
             maxBufSize = eh._checkMemSize(len(src), userData)
         else:
-            maxBufSize = eh._checkMemSize(argv[3], userData)
+            maxBufSize = eh._checkMemSize(srcLen, userData)
         
-        if len(src) < argv[3]:
+        if len(src) < srcLen:
             src += "\x00"
-        elif argv[3] != -1:
-            src = src[:argv[3]]
+        elif srcLen != -1:
+            src = src[:srcLen]
             
         if argv[5] == 0:
             eh.uc.reg_write(eh.regs["ret"], len(src))

@@ -26,16 +26,17 @@ class BasicBlock():
             if addr >= bb.start_ea and addr < bb.end_ea:
                 return bb
 
+# in order to minimize r2pipe overhead, we will cache things
 class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
-    # def __init__(self, path, useProjects=True, projectName=None):
     def __init__(self, path, eh):
+        self.cache = {}
         super(Radare2AnalysisHelper, self).__init__()
         try:
             self.eh = eh
             self.r = r2pipe.open(path)
             self.path = path
-        except:
-            print("error loading %s in radare2" % path)
+        except Exception as e:
+            print("error loading %s in radare2: %s" % (path, str(e)))
             exit(1)
 
         info = self.r.cmdj("iAj")
@@ -71,14 +72,19 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         
         '''
         self.r.cmd("aaa")
+        
+        # initialize cache
+        self.clearCache()
+        
         self._additionalAnalysis()
         
-
-
     def _additionalAnalysis(self):
         # label j_ functions
-        candidates = map(lambda x: x['offset'] ,filter(lambda y: y['nbbs'] == 1 and y['size'] <= 10, 
-                         self.r.cmdj("aflj")))
+        candidates = map(lambda x: x['offset'], 
+                            filter(lambda y: y['nbbs'] == 1 and 
+                            y['size'] <= 10, 
+                            self.r.cmdj("aflj"))
+                         )
         for candidate in candidates:
             try:
                 if self._getBasicBlocks(candidate)[0]['ninstr'] == 1 and self.getMnem(candidate) == "jmp":
@@ -92,19 +98,122 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
     def _getFileNameFromPath(self, path):
         head, tail = ntpath.split(path)
         return tail or ntpath.basename(head)
+        
+    def _getBasicBlocks(self, addr):
+        addr = self.getFuncStart(addr) # caches blocks for this function
+        return self.cache['afb'][addr]
+       
+    def _getFuncInsns(self, funcAddr):
+        # pdfj does not return expected results
+        insns = []
+        funcEnd = self.getFuncEnd(funcAddr)
+        addr = funcAddr
+        done = False
+        while 1:
+            insnChunk = self.r.cmdj("pdj 50 @%d" % addr)
+            for insn in insnChunk:
+                if insn['offset'] < funcEnd:
+                    insns.append(insn)
+                else:
+                    done = True
+                    break
+                addr = insn['offset'] + insn['size']
+                if addr >= funcEnd:
+                    done = True
+                    break
+            if done:
+                return insns
+        
+    # cache instructions, blocks, and opcodes for a function
+    def _cacheFunc(self, funcAddr):
+        insns = self._getFuncInsns(funcAddr)   
+        cachedInsns = map(lambda x: x['offset'], self.cache['pd'])
+        self.cache['pd'] += filter(lambda x: x['offset'] not in cachedInsns, insns)
+        self.r.cmd("pd 50 @%d" % funcAddr) # workaround disassemble bug
+        ops = self.r.cmdj("aoj %d @%d" % (len(insns), funcAddr))
+        cachedOps = map(lambda x: x['addr'], self.cache['ao'])
+        self.cache['ao'] += filter(lambda x: x['addr'] not in cachedOps, ops)
+        self.cache['afb'][funcAddr] = self.r.cmdj("afbj %d" % funcAddr)
+        
+    def _getOpcode(self, addr):
+        op = filter(lambda x: x['addr'] == addr, self.cache['ao'])
+        if len(op) > 0:
+            return op[0]
+        op = self.r.cmdj("aoj 1 @%d" % addr)[0]
+        self.cache['ao'].append(op)
+        return op
+        
+    def _getInsn(self, addr):
+        insn = filter(lambda x: x['offset'] == addr, self.cache['pd'])
+        if len(insn) > 0:
+            return insn[0]
+        insn = self.r.cmdj("pdj 1 @%d" % addr)[0]
+        self.cache['pd'].append(insn)
+        return insn
+        
+    def _deleteCacheItem(self, item):
+        if isinstance(self.cache[item], list):
+            self.cache[item] = []
+        else:
+            self.cache[item] = {}
 
-    def getFuncStart(self, addr):
+    def _getFuncInfo(self, addr):
         try:
-            return self.r.cmdj("afij %d" % addr)[0]['offset']
-        except:
+            if addr in self.cache['afi']:
+                return self.cache['afi'][addr]
+            
+            self.cache['afi'][addr] = self.r.cmdj("afij %d" % addr)[0]
+            return self.cache['afi'][addr]
+        except Exception as e:
+            logging.debug("exception finding function info for %s: %s" 
+                          % (self.eh.hexString(addr), str(e)))
+            self.cache['afi'][addr] = None
             return None
+        
+    def clearCache(self, item=None):
+        if item is None:
+            self.cache = {}
+            
+            # symbols
+            self.cache['fn'] = {}
+            self.r.cmd("fs symbols")
+            self.cache['fn']['symbols'] = self.r.cmdj("fnj")
+            self.r.cmd("fs imports")
+            self.cache['fn']['imports'] = self.r.cmdj("fnj")
+            self.r.cmd("fs *")
+            self.cache['fn']['all'] = self.r.cmdj("fnj")
+            
+            # segments and sections
+            if self.filetype != "PE":
+                self.cache['segments'] = self.r.cmdj("iSSj")
+                self.cache['sections'] = self.r.cmdj("iSj")
+            else:
+                self.cache['segments'] = self.r.cmdj("iSj")
+                self.cache['sections'] = self.cache['segments']
+                
+            # cached on demand
+            self.cache['afi'] = {} # function info keyed on requested addr
+            self.cache['afb'] = {} # basic blocks keyed on function addr
+            self.cache['ao'] = [] # opcodes
+            self.cache['pd'] = [] # instructions
+            self.cache['funcs'] = [] # track cached functions
+        elif item in self.cache:
+            self._deleteCacheItem(item)
+               
+    # assume emulation for this function and cache everything
+    def getFuncStart(self, addr):
+        fi = self._getFuncInfo(addr)
+        if fi == None:
+            return None
+        funcStart = fi['offset']
+        if funcStart not in self.cache['funcs']:
+            self.cache['funcs'].append(funcStart)
+            self._cacheFunc(funcStart)
+        return funcStart
 
     def getFuncEnd(self, addr):
-        try:
-            fi = self.r.cmdj("afij %d" % addr)[0]
-            return fi['offset'] + fi['size']
-        except:
-            return None
+        fi = self._getFuncInfo(addr)
+        return fi['offset'] + fi['size']
 
     def getFuncName(self, addr, normalized=True):
         if normalized:
@@ -114,56 +223,37 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     def getMnem(self, addr):
         try:
-            return self.r.cmdj("aoj @%d" % addr)[0]['mnemonic']
+            op = self._getOpcode(addr)
+            return op['mnemonic']
         except:
             return ""
-
-    def _getBasicBlocks(self, addr):
-        return self.r.cmdj("afbj %d" % self.r.cmdj("afij %d" % addr)[0]['offset'])
-
-    # for broken project file issue
-    def _getBlockInsnCount(self, bb):
-        try:
-            if bb['ninstr'] == 0:
-                cnt = 0
-                addr = bb['addr']
-                while addr < bb['addr'] + bb['size']:
-                    insn = self.rcmdj("aoj 1 @%d" % addr)
-                    addr += insn['size']
-                    cnt += 1
-                return cnt
-            else:
-                return bb['ninstr']
-        except:
-            return 0
 
     # gets address of last instruction in the basic block containing addr
     def getBlockEndInsnAddr(self, addr, flowchart):
         try:
             bbs = self._getBasicBlocks(addr)
             bb = filter(lambda x: x['addr'] <= addr and (x['addr'] + x['size']) > addr, bbs)[0]
-            insnCount = self._getBlockInsnCount(bb)
-            return self.r.cmdj("pdj %d @%d" % (insnCount, bb['addr']))[-1]['offset']
+            addr = bb['addr']
+            while addr < bb['addr'] + bb['size']:
+                insn = self._getOpcode(addr)
+                addr += insn['size']
+            return insn['addr']
         except:
             return None
 
     def skipJumpTable(self, addr):
         pass
 
-    def getMinimumAddr(self):
-        if self.filetype != "PE":
-            segmentCmd = self.r.cmdj("iSSj")
+    def getMinimumAddr(self):    
+        # we don't want to consider PAGEZERO
+        if self.filetype == "MACHO":
+            return sorted(filter(lambda y: y > 0, map(lambda x: x['vaddr'], self.cache['segments'])))[0]
         else:
-            segmentCmd = self.r.cmdj("iSj")
-        return sorted(filter(lambda y: y > 0, map(lambda x: x['vaddr'], segmentCmd)))[0]
+            return sorted(map(lambda x: x['vaddr'], self.cache['segments']))[0]
 
     def getMaximumAddr(self):
-        if self.filetype != "PE":
-            segmentCmd = self.r.cmdj("iSSj")
-        else:
-            segmentCmd = self.r.cmdj("iSj")
         maxAddr = 0
-        for seg in segmentCmd:
+        for seg in self.cache['segments']:
             if seg['vaddr'] + seg['vsize'] > maxAddr:
                 maxAddr = seg['vaddr'] + seg['vsize']
                 
@@ -183,10 +273,10 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         return buf
 
     def getOperand(self, addr, opndNum):
-        opndCnt = len(self.r.cmdj("aoj @%d" % addr)[0]['opex']['operands'])
+        opndCnt = len(self._getOpcode(addr)['opex']['operands'])
         if opndNum > opndCnt - 1:
             return None
-        opsString = " ".join(self.r.cmdj("aoj @%d" % addr)[0]['disasm'].split(" ")[1:])
+        opsString = " ".join(self._getOpcode(addr)['disasm'].split(" ")[1:])
         if opsString[0] == "{":
             opsString = opsString[1:-1]
         return opsString.split(", ")[opndNum]
@@ -206,38 +296,26 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     # gets name of smallest of segments containing addr, unless smallest is set to False
     def getSegmentName(self, addr, smallest=True):
-        if self.filetype != "PE":
-            segmentCmd = self.r.cmdj("iSSj")
-        else:
-            segmentCmd = self.r.cmdj("iSj")
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
         try:
             if smallest:
-                return min(filter(flt, segmentCmd), key = lambda x: x['vsize'])['name']
+                return min(filter(flt, self.cache['segments']), key = lambda x: x['vsize'])['name']
             else:
-                return max(filter(flt, segmentCmd), key = lambda x: x['vsize'])['name']
+                return max(filter(flt, self.cache['segments']), key = lambda x: x['vsize'])['name']
         except:
             return ""
 
     def getSegmentStart(self, addr):
-        if self.filetype != "PE":
-            segmentCmd = self.r.cmdj("iSSj")
-        else:
-            segmentCmd = self.r.cmdj("iSj")
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
         try:
-            return filter(flt, segmentCmd)[0]['vaddr']
+            return filter(flt, self.cache['segments'])[0]['vaddr']
         except:
             return -1
 
     def getSegmentEnd(self, addr):
-        if self.filetype != "PE":
-            segmentCmd = self.r.cmdj("iSSj")
-        else:
-            segmentCmd = self.r.cmdj("iSj")
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
         try:
-            seg = filter(flt, segmentCmd)[0]
+            seg = filter(flt, self.cache['segments'])[0]
             return seg['vaddr'] + seg['vsize']
         except:
             return -1
@@ -251,16 +329,12 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         return self.getSegmentSize(addr)
 
     def getSegments(self):
-        if self.filetype != "PE":
-            segmentCmd = self.r.cmdj("iSSj")
-        else:
-            segmentCmd = self.r.cmdj("iSj")
-        return map(lambda x: x['vaddr'], segmentCmd)
+        return map(lambda x: x['vaddr'], self.cache['segments'])
             
     # if any of the section APIs fail, the address may still be a part of a segment
     def getSectionName(self, addr, smallest=True):
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
-        sections = filter(flt, self.r.cmdj("iSj"))
+        sections = filter(flt, self.cache['sections'])
         if len(sections) > 0:
             if smallest:
                 return min(sections, key = lambda x: x['vsize'])['name']
@@ -272,7 +346,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     def getSectionStart(self, addr):
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
-        sections = filter(flt, self.r.cmdj("iSj"))
+        sections = filter(flt, self.cache['sections'])
         if len(sections) > 0:
             return sections[0]['vaddr']
         else:
@@ -280,7 +354,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     def getSectionEnd(self, addr):
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
-        sections = filter(flt, self.r.cmdj("iSj"))
+        sections = filter(flt, self.cache['sections'])
         if len(sections) > 0:
             return sections[0]['vaddr'] + sections[0]['size']
         else:
@@ -288,72 +362,67 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     def getSectionSize(self, addr):
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
-        sections = filter(flt, self.r.cmdj("iSj"))
+        sections = filter(flt, self.cache['sections'])
         if len(sections) > 0:
             return sections[0]['size']
         else:
             return self.getSegmentSize(addr)
 
     def getSections(self):
-        return map(lambda x: x['vaddr'], self.r.cmdj("iSj"))
+        return map(lambda x: x['vaddr'], self.cache['sections'])
 
     # gets disassembled instruction with names and comments as a string
     def getDisasmLine(self, addr):
-        insn = self.r.cmdj("pdj 1 @%d" % addr)[0]
-        if 'comment' in insn:
+        insn = self._getInsn(addr)
+        # invalid instruction bug
+        if 'disasm' in insn and 'comment' in insn:
             return insn['disasm'] + " ; %s" % base64.b64decode(insn['comment'])
-        else:
+        elif 'disasm' in insn:
             return insn['disasm']
+        else:
+            return "<error retrieving insn>"
 
     def getName(self, addr):
         try:
-            self.r.cmd("fs symbols")
             ret = filter(lambda x: x['offset'] == addr and 
                                    x['name'][:4] != "fcn." and 
                                    re.match(r"entry[\d]+$", x['name']) == None, 
-                                   self.r.cmdj("fnj"))[0]['name']
+                                   self.cache['fn']['symbols'])[0]['name']
         except:
             try:
-                self.r.cmd("fs imports")
                 ret = filter(lambda x: x['offset'] == addr and 
                                        x['name'][:4] != "fcn." and 
                                        re.match(r"entry[\d]+$", x['name']) == None, 
-                                       self.r.cmdj("fnj"))[0]['name']
+                                       self.cache['fn']['imports'])[0]['name']
             except:
                 try:
-                    self.r.cmd("fs *")
                     ret = filter(lambda x: x['offset'] == addr and 
                                            x['name'][:4] != "fcn." and 
                                            re.match(r"entry[\d]+$", x['name']) == None, 
-                                           self.r.cmdj("fnj"))[0]['name']
+                                           self.cache['fn']['all'])[0]['name']
                 except:
                     ret = ""
-        self.r.cmd("fs *")
         return ret
 
     def getNameAddr(self, name):
         try:
-            return filter(lambda x: x['name'].replace("\n", "") == name, self.r.cmdj("fnj"))[0]['offset']
+            return filter(lambda x: x['name'].replace("\n", "") == name, self.cache['fn']['all'])[0]['offset']
         except:
             try:
                 return filter(lambda x: self.normalizeFuncName(x['name'].replace("\n", ""))
-                              == self.normalizeFuncName(name), self.r.cmdj("fnj"))[0]['offset']
+                              == self.normalizeFuncName(name), self.cache['fn']['all'])[0]['offset']
             except:
-                try:
-                    return filter(lambda x: self.normalizeFuncName(x['name'].replace("\n", ""), True) 
-                                  == self.normalizeFuncName(name, True), self.r.cmdj("fnj"))[0]['offset']
-                except:
-                    # if it's a hexadecimal number such as returned from getOpnd, convert it to an integer
-                    if name[:2] == "0x":
-                        return int(name, 16)
-                    else:
-                        return None 
+                # if it's a hexadecimal number such as returned from getOpnd, convert it to an integer
+                if name[:2] == "0x":
+                    return int(name, 16)
+                else:
+                    return None 
 
     def _getOpndDict(self, addr, opndNum):
-        opndCnt = len(self.r.cmdj("aoj @%d" % addr)[0]['opex']['operands'])
+        opndCnt = len(self._getOpcode(addr)['opex']['operands'])
         if opndNum > opndCnt - 1:
             return None
-        return self.r.cmdj("aoj @%d" % addr)[0]['opex']['operands'][opndNum]
+        return self._getOpcode(addr)['opex']['operands'][opndNum]
 
     def getOpndType(self, addr, opndNum):
         mnem = self.getMnem(addr)
@@ -413,7 +482,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         return 0    
 
     def getXrefsTo(self, addr):
-        return map(lambda x: x['from'], self.r.cmdj("axtj %d" % addr))
+        return map(lambda x: x['from'], filter(lambda y: y['opcode'] != "invalid", self.r.cmdj("axtj %d" % addr)))
 
     def getArch(self):
         return self.arch
@@ -425,7 +494,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         return self.filetype
 
     def getInsnSize(self, addr):
-        return self.r.cmdj("pdj 1 @%d" % addr)[0]['size']
+        return self._getInsn(addr)['size']
 
     def isTerminatingBB(self, bb):
         if len(list(bb.succs())) == 0:
@@ -435,7 +504,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
     def skipJumpTable(self, addr):
         # finds next block after the immediate next block which has the jump table in it
         try:
-            return filter(lambda x: x['addr'] > address + 4, r.cmdj("afbj @%d" % address))[0]['addr']
+            return filter(lambda x: x['addr'] > addr + 4, self._getBasicBlocks(addr))[0]['addr']
         except:
             return addr
 
@@ -447,7 +516,33 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         if name[:4] != "sym.":
             name = "sym." + name
 
-        self.r.cmd("fs symbols; f %s %d %d; fs *" % (name, size, addr))
+        self.r.cmd("fs symbols; f %s %d %d" % (name, size, addr))
+        self.cache['fn']['symbols'] = self.r.cmdj("fnj")
+        self.r.cmd("fs *")
+        self.cache['fn']['all'] = self.r.cmdj("fnj")
 
     def setComment(self, addr, comment, repeatable=False):
         self.r.cmd("CCu base64:%s @%d" % (base64.b64encode(comment), addr))
+
+    def normalizeFuncName(self, funcName):
+        # remove Radare2's flag space prefixes
+        if funcName[:4] == "sym.":
+            funcName = funcName[4:]
+
+        if funcName[:4] == "imp.":
+            funcName = funcName[4:]
+
+        if funcName[:5] == "func.":
+            funcName = funcName[5:]
+
+        if funcName[:4] == "fcn.":
+            funcName = funcName[4:]
+
+        if funcName[:4] == "sub.":
+            funcName = funcName[4:]
+
+        # remove Radare2's library prefix
+        funcName = re.sub(r"[A-Za-z0-9_]+\.dll_", "", funcName)
+
+        return funcName
+        

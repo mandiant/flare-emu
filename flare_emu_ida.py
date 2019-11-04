@@ -3,6 +3,7 @@ import idaapi
 import idautils
 import flare_emu
 import logging
+import re
 
 class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
     def __init__(self, eh):
@@ -144,7 +145,10 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
         return idc.get_name(addr, idc.ida_name.GN_VISIBLE)
 
     def getNameAddr(self, name):
-        return idc.get_name_ea_simple(name)
+        name = idc.get_name_ea_simple(name)
+        if name == "":
+            name = idc.get_name_ea_simple(self.normalizeFuncName(name))
+        return name
 
     def getOpndType(self, addr, opndNum):
         return idc.get_operand_type(addr, opndNum)
@@ -205,3 +209,8 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
     
     def setComment(self, addr, comment, repeatable=False):
         idc.set_cmt(addr, comment, repeatable)
+        
+    def normalizeFuncName(self, funcName):
+        # remove appended _n from IDA Pro names
+        funcName = re.sub(r"_[\d]+$", "", funcName)
+        return funcName

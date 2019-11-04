@@ -220,39 +220,7 @@ class AnalysisHelper(object):
         pass
 
     def normalizeFuncName(self, funcName, extra=False):
-        # remove Radare2's flag space prefixes
-        if funcName[:4] == "sym.":
-            funcName = funcName[4:]
-
-        if funcName[:4] == "imp.":
-            funcName = funcName[4:]
-
-        if funcName[:5] == "func.":
-            funcName = funcName[5:]
-
-        if funcName[:4] == "fcn.":
-            funcName = funcName[4:]
-
-        if funcName[:4] == "sub.":
-            funcName = funcName[4:]
-
-        # remove Radare2's library prefix
-        funcName = re.sub(r"[A-Za-z0-9_]+\.dll_", "", funcName)
-
-        if extra:
-            # remove appended _n from IDA Pro names
-            funcName = re.sub(r"_[\d]+$", "", funcName)
-                
-            # remove appended _l for locale flavors of string functions
-            funcName = re.sub(r"_l$", "", funcName)
-            
-            # remove IDA Pro's j_ prefix
-            if funcName[:2] == "j_":
-                funcName = funcName[2:]
-
-            # remove prepended underscores
-            funcName = re.sub(r"^_+", "", funcName)
-        return funcName
+        pass
 
     def setName(self, addr, name, size=0):
         pass
@@ -286,7 +254,13 @@ class EmuHelper():
             except Exception as e:
                 print("error importing flare_emu_radare: %s" % e)
                 return
-            self.analysisHelper = flare_emu_radare.Radare2AnalysisHelper(samplePath, self)
+                
+            # copy Radare2AnalysisHelper to skip reanalyzing binary and save time
+            if emuHelper is not None:
+                self.analysisHelper = emuHelper.analysisHelper
+                self.analysisHelper.eh = self
+            else:
+                self.analysisHelper = flare_emu_radare.Radare2AnalysisHelper(samplePath, self)
             self.analysisHelperFramework = "Radare2"
         else:
             try:
@@ -893,6 +867,10 @@ class EmuHelper():
     # writes a pointer value in emulator's memory
     def writeEmuPtr(self, va, value):
         self.uc.mem_write(va, struct.pack(self.pack_fmt, value))
+        
+    # gets the signed integer value of the unsigned integer value given the bitness of the architecture
+    def getSignedValue(self, value):
+        return struct.unpack(self.pack_fmt_signed, struct.pack(self.pack_fmt, value))[0]
 
     def pageAlign(self, addr):
         return addr & 0xfffffffffffff000
@@ -1020,6 +998,7 @@ class EmuHelper():
                 mode = "64-bit"
                 self.size_pointer = 8
                 self.pack_fmt = "<Q"
+                self.pack_fmt_signed = "<Q"
                 self.pageMask = 0xfffffffffffff000
                 self.regs = {"ax": unicorn.x86_const.UC_X86_REG_RAX, "bx": unicorn.x86_const.UC_X86_REG_RBX,
                              "cx": unicorn.x86_const.UC_X86_REG_RCX, "dx": unicorn.x86_const.UC_X86_REG_RDX,
@@ -1074,6 +1053,7 @@ class EmuHelper():
                 mode = "32-bit"
                 self.size_pointer = 4
                 self.pack_fmt = "<I"
+                self.pack_fmt_signed = "<i"
                 self.pageMask = 0xfffff000
                 self.regs = {"ax": unicorn.x86_const.UC_X86_REG_EAX, "bx": unicorn.x86_const.UC_X86_REG_EBX,
                              "cx": unicorn.x86_const.UC_X86_REG_ECX, "dx": unicorn.x86_const.UC_X86_REG_EDX,
@@ -1109,6 +1089,7 @@ class EmuHelper():
                     self.filetype = "UNKNOWN"
                 self.size_pointer = 8
                 self.pack_fmt = "<Q"
+                self.pack_fmt_signed = "<q"
                 self.derefPtr = self.analysisHelper.getQWordValue
                 self.pageMask = 0xfffffffffffff000
                 self.regs = {"R0": unicorn.arm64_const.UC_ARM64_REG_X0, "R1": unicorn.arm64_const.UC_ARM64_REG_X1,
@@ -1235,6 +1216,7 @@ class EmuHelper():
 
                 self.size_pointer = 4
                 self.pack_fmt = "<I"
+                self.pack_fmt_signed = "<i"
                 self.derefPtr = self.analysisHelper.getDwordValue
                 self.pageMask = 0xfffff000
                 self.regs = {"R0": unicorn.arm_const.UC_ARM_REG_R0, "R1": unicorn.arm_const.UC_ARM_REG_R1,
@@ -1436,7 +1418,8 @@ class EmuHelper():
         # map all binary segments as one memory region for easier management
         self.uc.mem_map(baseAddr & self.pageMask, memsize)
         for segVA in self.analysisHelper.getSegments():
-            if segVA == 0:
+            # we don't want to map PAGEZERO
+            if self.filetype == "MACHO" and segVA == 0:
                 continue
             segName = self.analysisHelper.getSegmentName(segVA)
             endVA = self.analysisHelper.getSegmentEnd(segVA)
@@ -1515,7 +1498,7 @@ class EmuHelper():
             funcName = self.analysisHelper.getName(self.getRegVal(self.analysisHelper.getOperand(address, 0)))
         else:
             funcName = self.analysisHelper.getName(self.analysisHelper.getOpndValue(address, 0))
-        return funcName
+        return self.analysisHelper.normalizeFuncName(funcName)
     
     # we don't know the number of args to a given function and we're not considering SSE args
     # this is just a convenience, use the emulator object if you have specific needs
@@ -1607,11 +1590,24 @@ class EmuHelper():
         self.enteredBlock = False
         return True
 
+    def normalizeApiName(self, funcName):
+        # remove appended _l for locale flavors of string functions
+        funcName = re.sub(r"_l$", "", funcName)
+        
+        # remove prepended underscores
+        funcName = re.sub(r"^_+", "", funcName)
+        
+        if funcName[:2] == "j_":
+            funcName = funcName[2:]
+            
+        return funcName
+        
     # handle common runtime functions
     def _handleApiHooks(self, address, argv, funcName, userData):
-        funcName = self.analysisHelper.normalizeFuncName(funcName, True)
         if funcName not in self.apiHooks:
-            return False
+            funcName = self.normalizeApiName(funcName)
+            if funcName not in self.apiHooks:
+                return False
         try:
             self.apiHooks[funcName](self, address, argv, funcName, userData)
         except Exception as e:

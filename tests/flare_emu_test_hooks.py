@@ -8,7 +8,7 @@
 #
 # Author: James T. Bennett
 #
-# flare_emu_test_hooks.py is an IDApython script for testing flare-emu
+# flare_emu_test_hooks.py is a script for testing flare-emu with IDA Pro and Radare2
 #
 # NOTE: you may have to rename functions IDA Pro fails to recognize, such as printf
 #
@@ -98,9 +98,6 @@ def wcsdupHook(eh, address, argv, funcName, userData):
     eh.uc.reg_write(eh.regs["ret"], 0)
 
 if __name__ == '__main__':     
-    #fmt = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
-    #logging.basicConfig(level=logging.DEBUG, filename="/Users/me/Documents/tracedebug", format=fmt)
-    #logging.basicConfig(level=logging.DEBUG, filename="c:\\users\\limited_user\\desktop\\tracedebug.txt", format=fmt)
     # optional argument with sample path to test radare2 support
     if len(sys.argv) == 2:
         eh = flare_emu.EmuHelper(samplePath=sys.argv[1])
