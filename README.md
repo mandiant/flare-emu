@@ -65,14 +65,14 @@ Using the same example above, not much changes when working with Radare2 rather 
 from __future__ import print_function
 import flare_emu
 
-def decrypt(argv):
-    myEH = flare_emu.EmuHelper()
+def decrypt(argv, eh):
+    myEH = flare_emu.EmuHelper(samplePath=sys.argv[1], emuHelper=eh)
     myEH.emulateRange(myEH.analysisHelper.getNameAddr("decryptString"), registers = {"arg1":argv[0], "arg2":argv[1], 
                            "arg3":argv[2], "arg4":argv[3]})
     return myEH.getEmuString(argv[0])
     
 def iterateCallback(eh, address, argv, userData):
-    s = decrypt(argv)
+    s = decrypt(argv, eh)
     print("%s: %s" % (eh.hexString(address), s))
     eh.analysisHelper.setComment(address, s, False)
     
@@ -82,7 +82,7 @@ if __name__ == '__main__':
     eh.iterate(eh.analysisHelper.getNameAddr("decryptString"), iterateCallback)
 ```
 
-There are two differences with this script. First, the `EmuHelper` constructor takes a parameter here: `samplePath=sys.argv[1]`. When the `samplePath` parameter is provided, `flare-emu` will use Radare2 with `r2pipe` as its binary analysis engine. Second, `flare-emu` creates a new instance of Radare2 using `r2pipe.open`, so it will likely not have the name `decryptString` for the function we are interested in. You can either set the name yourself using `EmuHelper`'s `analysisHelper` object like so: `eh.analysisHelper.setName(<some address>, "decryptString")`, or you can directly input the address for the calls to `iterate` and `emulateRange`.
+There are two differences with this script. First, the `EmuHelper` constructor takes a parameter here: `samplePath=sys.argv[1]`. When the `samplePath` parameter is provided, `flare-emu` will use Radare2 with `r2pipe` as its binary analysis engine. You can also see that a second parameter is passed to the second `EmuHelper` instance created in the `decrypt` function. The `emuHelper` parameter takes an existing `EmuHelper` object and clones its memory when creating the new object. Also, if you are using Radare2, the new instance re-uses the existing Radare2 session instead of creating a new one which would add more overhead. Second, `flare-emu` creates a new instance of Radare2 using `r2pipe.open`, so it will likely not have the name `decryptString` for the function we are interested in. You can either set the name yourself using `EmuHelper`'s `analysisHelper` object like so: `eh.analysisHelper.setName(<some address>, "decryptString")`, or you can directly input the address for the calls to `iterate` and `emulateRange`.
 
 ## [Emulation Functions](#emulationfuncs)
 `emulateRange(startAddr, endAddr=None, registers=None, stack=None, instructionHook=None, callHook=None, memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, strict=True, count=0)` - Emulates the range of instructions starting at `startAddress` and ending at `endAddress`, not including the instruction at `endAddress`. If endAddress is `None`, emulation stops when a "return" type instruction is encountered within the same function that emulation began. 
