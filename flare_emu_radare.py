@@ -77,7 +77,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         self.clearCache()
         
         self._additionalAnalysis()
-        
+
     def _additionalAnalysis(self):
         # label j_ functions
         candidates = map(lambda x: x['offset'], 

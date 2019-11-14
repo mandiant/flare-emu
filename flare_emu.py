@@ -1591,15 +1591,15 @@ class EmuHelper():
         return True
 
     def normalizeApiName(self, funcName):
+        if funcName[:2] == "j_":
+            funcName = funcName[2:]
+            
         # remove appended _l for locale flavors of string functions
         funcName = re.sub(r"_l$", "", funcName)
         
         # remove prepended underscores
         funcName = re.sub(r"^_+", "", funcName)
-        
-        if funcName[:2] == "j_":
-            funcName = funcName[2:]
-            
+      
         return funcName
         
     # handle common runtime functions
