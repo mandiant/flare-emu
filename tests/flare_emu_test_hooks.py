@@ -8,7 +8,7 @@
 #
 # Author: James T. Bennett
 #
-# flare_emu_test_hooks.py is an IDApython script for testing flare-emu
+# flare_emu_test_hooks.py is a script for testing flare-emu with IDA Pro and Radare2
 #
 # NOTE: you may have to rename functions IDA Pro fails to recognize, such as printf
 #
@@ -17,10 +17,9 @@
 ############################################
 
 from __future__ import print_function
-import idc
-import idaapi
-import idautils
 import flare_emu
+import sys
+import logging
 
 tests = {"from MultiByteToWideChar\r\n":["this is a test".encode("utf-16"), 15], 
          "from WideCharToMultiByte\r\n":["this is a test", 15], 
@@ -98,16 +97,22 @@ def wcsdupHook(eh, address, argv, funcName, userData):
     
     eh.uc.reg_write(eh.regs["ret"], 0)
 
-if __name__ == '__main__':   
-    eh = flare_emu.EmuHelper()
+if __name__ == '__main__':     
+    # optional argument with sample path to test radare2 support
+    if len(sys.argv) == 2:
+        eh = flare_emu.EmuHelper(samplePath=sys.argv[1])
+    else:
+        eh = flare_emu.EmuHelper()
+        
+    eh.analysisHelper.setName(0x41141a, "printf")
     print("testing iterate feature for printf function")
-    strcpyEa = idc.get_name_ea_simple("j_strcpy")
-    eh.iterate(idc.get_name_ea_simple("printf"), iterateHook)
-    idc.set_name(strcpyEa, "testname", idc.SN_NOCHECK)
+    strcpyEa = eh.analysisHelper.getNameAddr("j_strcpy")
+    eh.iterate(eh.analysisHelper.getNameAddr("printf"), iterateHook)
+    eh.analysisHelper.setName(strcpyEa, "testname")
     eh.addApiHook("testname", "strcpy")
     eh.addApiHook("wcsdup", wcsdupHook)
     print("testing with renamed and redirected strcpy hook and new hook for wcsdup")
-    eh.iterate(idc.get_name_ea_simple("printf"), iterateHook)
+    eh.iterate(eh.analysisHelper.getNameAddr("printf"), iterateHook)
     if "hookCalled" not in dir(eh):
         print("FAILED: addApiHook hook not called")
     

@@ -2,9 +2,9 @@
 
 # [flare-emu](#flare-emu)
 
-**flare-emu** marries [IDA Pro](https://www.hex-rays.com/products/ida/)’s binary analysis capabilities with [Unicorn](https://www.unicorn-engine.org/)’s emulation framework to provide the user with an easy to use and flexible interface for scripting emulation tasks. It is designed to handle all the housekeeping of setting up a flexible and robust emulator for its supported architectures so that you can focus on solving your code analysis problems. Currently, **flare-emu** supports the `x86`, `x86_64`, `ARM`, and `ARM64` architectures.
+**flare-emu** marries a supported binary analysis framework, such as [IDA Pro](https://www.hex-rays.com/products/ida/) or [Radare2](https://rada.re/r/), with [Unicorn](https://www.unicorn-engine.org/)’s emulation framework to provide the user with an easy to use and flexible interface for scripting emulation tasks. It is designed to handle all the housekeeping of setting up a flexible and robust emulator for its supported architectures so that you can focus on solving your code analysis problems. Currently, **flare-emu** supports the `x86`, `x86_64`, `ARM`, and `ARM64` architectures.
 
-It currently provides four different interfaces to serve your emulation needs, along with a slew of related helper and utility functions.
+It currently provides five different interfaces to serve your emulation needs, along with a slew of related helper and utility functions.
 
 1.	`emulateRange` – This API is used to emulate a range of instructions, or a function, within a user-specified context. It provides options for user-defined hooks for both individual instructions and for when “call” instructions are encountered. The user can decide whether the emulator will skip over, or call into function calls. This interface provides an easy way for the user to specify values for given registers and stack arguments. If a bytestring is specified, it is written to the emulator’s memory and the pointer is written to the register or stack variable. After emulation, the user can make use of `flare-emu`’s utility functions to read data from the emulated memory or registers, or use the Unicorn emulation object that is returned for direct probing. A small wrapper function for `emulateRange`, named `emulateSelection`, can be used to emulate the range of instructions currently highlighted in IDA Pro. 
 
@@ -14,10 +14,14 @@ It currently provides four different interfaces to serve your emulation needs, a
 
 4. `emulateBytes` – This API provides a way to simply emulate a blob of extraneous shellcode. The provided bytes are not added to the IDB and are simply emulated as is. This can be useful for preparing the emulation environment. For example, `flare-emu` itself uses this API to manipulate a Model Specific Register (MSR) for the `ARM64` CPU that is not exposed by Unicorn in order to enable Vector Floating Point (VFP) instructions and register access. The Unicorn emulation object is returned for further probing by the user.
 
-5. `emulateFrom` - This API is useful in cases where function boundaries are not clearly defined as is often the case with obfuscated binaries or shellcode. You provide a starting address, and it will emulate until there is nothing left to emulate or you stop emulation in one of your hooks. This can be called with the `strict` parameter set to `False` to enable dynamic code discovery; `flare-emu` will have IDA Pro make instructions as they are encountered during emulation.
+5. `emulateFrom` - This API is useful in cases where function boundaries are not clearly defined as is often the case with obfuscated binaries or shellcode. You provide a starting address, and it will emulate until there is nothing left to emulate or you stop emulation in one of your hooks. With IDA Pro, this can be called with the `strict` parameter set to `False` to enable dynamic code discovery; `flare-emu` will have IDA Pro make instructions as they are encountered during emulation.
 
 ## [Installation](#installation)
-To install `flare-emu`, simply drop `flare_emu.py` and `flare_emu_hooks.py` into your IDA Pro's `python` directory and import it as a module in your IDApython scripts. `flare-emu` depends on [Unicorn](https://www.unicorn-engine.org/) and its Python bindings.
+To install `flare-emu` for IDA Pro, simply drop `flare_emu.py`, `flare_emu_ida.py`, and `flare_emu_hooks.py` into your IDA Pro's `python` directory and import it as a module in your IDAPython scripts. 
+
+To install `flare-emu` for Radare2, simply ensure that `flare_emu.py`, `flare_emu_radare.py`, and `flare_emu_hooks.py` are in Python's search path for importing modules. When using Radare2 as the binary analysis component for `flare-emu`, [r2pipe](https://github.com/radareorg/radare2-r2pipe) is required. 
+
+In any case, `flare-emu` depends on [Unicorn](https://www.unicorn-engine.org/) and its Python bindings.
 
 **IMPORTANT NOTE**  
 `flare-emu` was written using the new IDA Pro 7x API, it is not backwards compatible with previous versions of IDA Pro.
@@ -25,37 +29,60 @@ To install `flare-emu`, simply drop `flare_emu.py` and `flare_emu_hooks.py` into
 ## [Usage](#usage)
 While `flare-emu` can be used to solve many different code analysis problems, one of its more common uses is to aid in decrypting strings in malware binaries. [FLOSS](https://github.com/fireeye/flare-floss) is a great tool than can often do this automatically for you by attempting to identify the string decrypting function(s) and using emulation to decrypt the strings passed in at every cross-reference to it. However, it is not possible for FLOSS to always be able to identify these functions and emulate them properly using its generic approaches. Sometimes you have to do a little more work, and this is where `flare-emu` can save you a lot of time once you are comfortable with it. Let's walk through a common scenario a malware analyst encounters when dealing with encrypted strings.
 
-### Easy String Decryption Scenario
-You've identified the function to decrypt all the strings in an `x86_64` binary. This function is called all over the place and decrypts many different strings. In IDA Pro, you name this function `decryptString`. Here is your flare-emu script to decrypt all these strings and place comments with the decrypted strings at each function call as well as logging each decrypted string and the address it is decrypted at.
+### Easy String Decryption Scenario with IDA Pro
+You've identified the function to decrypt all the strings in an `x86_64` binary. This function is called all over the place and decrypts many different strings. In IDA Pro, you name this function `decryptString`. Here is your `flare-emu` script to decrypt all these strings and place comments with the decrypted strings at each function call as well as logging each decrypted string and the address it is decrypted at.
 
 ```
 from __future__ import print_function
-import idc
-import idaapi
-import idautils
 import flare_emu
 
 def decrypt(argv):
     myEH = flare_emu.EmuHelper()
-    myEH.emulateRange(idc.get_name_ea_simple("decryptString"), registers = {"arg1":argv[0], "arg2":argv[1], 
+    myEH.emulateRange(myEH.analysisHelper.getNameAddr("decryptString"), registers = {"arg1":argv[0], "arg2":argv[1], 
                            "arg3":argv[2], "arg4":argv[3]})
     return myEH.getEmuString(argv[0])
     
 def iterateCallback(eh, address, argv, userData):
     s = decrypt(argv)
-    print("%016X: %s" % (address, s))
-    idc.set_cmt(address, s, 0)
+    print("%s: %s" % (eh.hexString(address), s))
+    eh.analysisHelper.setComment(address, s, False)
     
 if __name__ == '__main__':   
     eh = flare_emu.EmuHelper()
-    eh.iterate(idc.get_name_ea_simple("decryptString"), iterateCallback)
+    eh.iterate(eh.analysisHelper.getNameAddr("decryptString"), iterateCallback)
 ```
 
 In `__main__`, we begin by creating an instance of the `EmuHelper` class from `flare-emu`. This is the class we use to do everything with `flare-emu`. Next, we use the `iterate` API, giving it the address of our `decryptString` function and the name of our callback function that `EmuHelper` will call for each cross-reference emulated up to. 
 
 The `iterateCallback` function receives the EmuHelper instance, named `eh` here, along with the address of the cross-reference, the arguments passed to this particular call, and a special dictionary named `userData` here. `userData` is not used in this simple example, but think of it as a persistent context to your emulator where you can store your own custom data. Be careful though, because `flare-emu` itself also uses this dictionary to store critical information it needs to perform its tasks. One such piece of data is the `EmuHelper` instance itself, stored in the "EmuHelper" key. If you are interested, search the source code to learn more about this dictionary. This callback function simply calls the `decrypt` function, prints the decrypted string and creates a comment for it at the address of that call to `decryptString`.
 
-`decrypt` creates a second instance of `EmuHelper` that is used to emulate the `decryptString` function itself, which will decrypt the string for us. The prototype of this `decryptString` function is as follows: `char * decryptString(char *text, int textLength, char *key, int keyLength)`. It simply decrypts the string in place. Our `decrypt` function passes in the arguments as received by the `iterateCallback` function to our call to `EmuHelper`'s `emulateRange` API. Since this is an `x86_64` binary, the calling convention uses registers to pass arguments and not the stack. `flare-emu` automatically determines which registers represent which arguments based on the architecture and file format of the binary as determined by IDA Pro, allowing you to write at least somewhat architecture agnostic code. If this were 32-bit `x86`, you would use the `stack` argument to pass the arguments instead, like so: `myEH.emulateRange(idc.get_name_ea_simple("decryptString"), stack = [0, argv[0], argv[1], argv[2], argv[3]])`. The first stack value is the return address in `x86`, so we just use `0` as a placeholder value here. Once emulation is complete, we call the `getEmuString` API to retrieve the null-terminated string stored in the memory location pointed to by the first argument passed to the function.
+`decrypt` creates a second instance of `EmuHelper` that is used to emulate the `decryptString` function itself, which will decrypt the string for us. The prototype of this `decryptString` function is as follows: `char * decryptString(char *text, int textLength, char *key, int keyLength)`. It simply decrypts the string in place. Our `decrypt` function passes in the arguments as received by the `iterateCallback` function to our call to `EmuHelper`'s `emulateRange` API. Since this is an `x86_64` binary, the calling convention uses registers to pass arguments and not the stack. `flare-emu` automatically determines which registers represent which arguments based on the architecture and file format of the binary as determined by IDA Pro, allowing you to write at least somewhat architecture agnostic code. If this were 32-bit `x86`, you would use the `stack` argument to pass the arguments instead, like so: `myEH.emulateRange(myEH.analysisHelper.getNameAddr("decryptString"), stack = [0, argv[0], argv[1], argv[2], argv[3]])`. The first stack value is the return address in `x86`, so we just use `0` as a placeholder value here. Once emulation is complete, we call the `getEmuString` API to retrieve the null-terminated string stored in the memory location pointed to by the first argument passed to the function.
+
+### Easy String Decryption Scenario with Radare2
+Using the same example above, not much changes when working with Radare2 rather than IDA Pro. One difference is that `flare-emu` is currently designed to be run as a command-line script or within a Python shell when working with Radare2. The Python shell is great for ad-hoc problem solving while the command-line script is great for batch processing. The Radare2 version of the script above looks like this:
+
+```
+from __future__ import print_function
+import flare_emu
+
+def decrypt(argv, eh):
+    myEH = flare_emu.EmuHelper(samplePath=sys.argv[1], emuHelper=eh)
+    myEH.emulateRange(myEH.analysisHelper.getNameAddr("decryptString"), registers = {"arg1":argv[0], "arg2":argv[1], 
+                           "arg3":argv[2], "arg4":argv[3]})
+    return myEH.getEmuString(argv[0])
+    
+def iterateCallback(eh, address, argv, userData):
+    s = decrypt(argv, eh)
+    print("%s: %s" % (eh.hexString(address), s))
+    eh.analysisHelper.setComment(address, s, False)
+    
+if __name__ == '__main__':   
+    eh = flare_emu.EmuHelper(samplePath=sys.argv[1])
+    eh.analysisHelper.setName(<some address>, "decryptString")
+    eh.iterate(eh.analysisHelper.getNameAddr("decryptString"), iterateCallback)
+```
+
+There are two differences with this script. First, the `EmuHelper` constructor takes a parameter here: `samplePath=sys.argv[1]`. When the `samplePath` parameter is provided, `flare-emu` will use Radare2 with `r2pipe` as its binary analysis engine. You can also see that a second parameter is passed to the second `EmuHelper` instance created in the `decrypt` function. The `emuHelper` parameter takes an existing `EmuHelper` object and clones its memory when creating the new object. Also, if you are using Radare2, the new instance re-uses the existing Radare2 session instead of creating a new one which would add more overhead. Second, `flare-emu` creates a new instance of Radare2 using `r2pipe.open`, so it will likely not have the name `decryptString` for the function we are interested in. You can either set the name yourself using `EmuHelper`'s `analysisHelper` object like so: `eh.analysisHelper.setName(<some address>, "decryptString")`, or you can directly input the address for the calls to `iterate` and `emulateRange`.
 
 ## [Emulation Functions](#emulationfuncs)
 `emulateRange(startAddr, endAddr=None, registers=None, stack=None, instructionHook=None, callHook=None, memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, strict=True, count=0)` - Emulates the range of instructions starting at `startAddress` and ending at `endAddress`, not including the instruction at `endAddress`. If endAddress is `None`, emulation stops when a "return" type instruction is encountered within the same function that emulation began. 
@@ -76,7 +103,7 @@ The `iterateCallback` function receives the EmuHelper instance, named `eh` here,
 
 * `memAccessHook` can be a function you define to be called whenever memory is accessed for reading or writing. It has the following prototype: `memAccessHook(unicornObject, accessType, memAccessAddress, memAccessSize, memValue, userData)`.
 
-* `strict`, when set to `True` (default), checks branch destinations to ensure the disassembler expects instructions. It otherwise skips the branch instruction. If set to `False`, `flare-emu` will make instructions in IDA Pro as it emulates them **(DISABLE WITH CAUTION)**.
+* `strict`, when set to `True` (default), checks branch destinations to ensure the disassembler expects instructions. It otherwise skips the branch instruction. If set to `False` when using IDA Pro, `flare-emu` will make instructions in IDA Pro as it emulates them **(DISABLE WITH CAUTION)**.
 
 * `count` is the maximum number of instructions to emulate, defaults to `0` which means no limit.
 
@@ -104,9 +131,7 @@ The following is an incomplete list of some of the useful utility functions prov
 
 * `hexString(value)` - Returns a hexadecimal formatted string for the value. Useful for logging and print statements.
 
-* `getIDBString(address)` - Returns the string of characters located at an address in the IDB, up to a null terminator. Characters are not necessarily printable. Useful for retrieving strings without an emulation context.
-
-* `skipInstruction(userData, useIDA=False)` - Call this from an emulation hook to skip the current instruction, moving the program counter to the next instruction. `useIDA` option was added to handle cases where IDA Pro folds multiple instructions into one pseudo instruction and you would like to skip all of them. This function cannot be called multiple times from a single instruction hook to skip multiple instructions. To skip multiple instructions, it is recommended not to write to the program counter directly if you are emulating ARM code as this might cause problems with thumb mode. Instead, try EmuHelper's `changeProgramCounter` API (described below).
+* `skipInstruction(userData, useAnalysisHelper=False)` - Call this from an emulation hook to skip the current instruction, moving the program counter to the next instruction. `useAnalysisHelper` option was added to handle cases where the binary analysis framework folds multiple instructions into one pseudo instruction and you would like to skip all of them. This function cannot be called multiple times from a single instruction hook to skip multiple instructions. To skip multiple instructions, it is recommended not to write to the program counter directly if you are emulating ARM code as this might cause problems with thumb mode. Instead, try `EmuHelper`'s `changeProgramCounter` API (described below).
 
 * `changeProgramCounter(userData, newAddress)` - Call this from an emulation hook to change the value of the program counter register. This API takes care of thumb mode tracking for the ARM architecture.
 
