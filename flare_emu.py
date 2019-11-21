@@ -27,6 +27,7 @@ import re
 import flare_emu_hooks
 import types
 import sys
+import platform
 
 PAGESIZE = 0x1000
 PAGEALIGNCHECK = 0xfff
@@ -37,10 +38,7 @@ ARM64NOP = "\x1f\x20\x03\xd5"
 MAX_ALLOC_SIZE = 10 * 1024 * 1024
 MAXCODEPATHS = 20
 MAXNODESEARCH = 100000
-try:
-    long        # Python 2
-except NameError:
-    long = int  # Python 3
+long = int() if platform.python_version_tuple()[0] is 3
 
 # parent class to provide binary analysis engine support for EmuHelper class
 # subclassed by Radare2AnalysisHelper and IdaProAnalysisHelper
