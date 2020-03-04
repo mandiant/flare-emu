@@ -36,6 +36,7 @@ def decode(argv):
 def ch(address, argv, funcName, userData):
     eh = userData["EmuHelper"]
     if funcName == "_xorCrypt":
+        # print(hex(argv[0]))
         s = eh.getEmuString(argv[0])
         dec = decode(argv)
         if dec not in testStrings:
