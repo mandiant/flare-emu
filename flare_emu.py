@@ -37,6 +37,11 @@ ARM64NOP = "\x1f\x20\x03\xd5"
 MAX_ALLOC_SIZE = 10 * 1024 * 1024
 MAXCODEPATHS = 20
 MAXNODESEARCH = 100000
+
+# Windows Error Codes
+ERROR_SUCCESS = 0x0
+ERROR_MORE_DATA = 0xEA
+
 try:
     long        # Python 2
 except NameError:
@@ -247,6 +252,8 @@ class EmuHelper():
         self.h_memhook = None
         self.h_inthook = None
         self.enteredBlock = False
+        self.allocations = {}
+        self.errorcode = 0
 
         if samplePath is not None:
             try:
@@ -663,6 +670,9 @@ class EmuHelper():
             userData["changeThumbMode"] = True
         mu.emu_start(startAddr, self.analysisHelper.getMaximumAddr(), count=count)
         return mu
+        
+    def writeEmuMem(self, addr, data):
+        self.writeEmuMem(addr, bytes(data))
 
     def hexString(self, va):
         if va > 0xffffffff:
@@ -866,7 +876,31 @@ class EmuHelper():
         
     # writes a pointer value in emulator's memory
     def writeEmuPtr(self, va, value):
-        self.uc.mem_write(va, struct.pack(self.pack_fmt, value))
+        self.writeEmuMem(va, struct.pack(self.pack_fmt, value))
+    
+    # reads WORD value in emulator's memory
+    def getEmuWord(self, va):
+        return struct.unpack("<H", self.uc.mem_read(va, 2))[0]
+        
+    # writes a WORD value in emulator's memory
+    def writeEmuWord(self, va, value):
+        self.writeEmuMem(va, struct.pack("<H", value))
+        
+    # reads DWORD value in emulator's memory
+    def getEmuDword(self, va):
+        return struct.unpack("<I", self.uc.mem_read(va, 4))[0]
+        
+    # writes a DWORD value in emulator's memory
+    def writeEmuDword(self, va, value):
+        self.writeEmuMem(va, struct.pack("<I", value))
+    
+    # reads QWORD value in emulator's memory
+    def getEmuQword(self, va):
+        return struct.unpack("<Q", self.uc.mem_read(va, 8))[0]
+        
+    # writes a QWORD value in emulator's memory
+    def writeEmuQword(self, va, value):
+        self.writeEmuMem(va, struct.pack("<Q", value))
         
     # gets the signed integer value of the unsigned integer value given the bitness of the architecture
     def getSignedValue(self, value):
@@ -1013,7 +1047,7 @@ class EmuHelper():
                              "r10": unicorn.x86_const.UC_X86_REG_R10, "r11": unicorn.x86_const.UC_X86_REG_R11,
                              "r12": unicorn.x86_const.UC_X86_REG_R12, "r13": unicorn.x86_const.UC_X86_REG_R13,
                              "r14": unicorn.x86_const.UC_X86_REG_R14, "r15": unicorn.x86_const.UC_X86_REG_R15,
-                             "ret": unicorn.x86_const.UC_X86_REG_RAX}
+                             "ret": unicorn.x86_const.UC_X86_REG_RAX, "rip": unicorn.x86_const.UC_X86_REG_RIP}
                 if self.filetype == "PE":
                     self.tilName = "mssdk_win7"
                     self.regs.update({"arg1": unicorn.x86_const.UC_X86_REG_RCX,
@@ -1064,7 +1098,7 @@ class EmuHelper():
                              "ecx": unicorn.x86_const.UC_X86_REG_ECX, "edx": unicorn.x86_const.UC_X86_REG_EDX,
                              "edi": unicorn.x86_const.UC_X86_REG_EDI, "esi": unicorn.x86_const.UC_X86_REG_ESI,
                              "ebp": unicorn.x86_const.UC_X86_REG_EBP, "esp": unicorn.x86_const.UC_X86_REG_ESP,
-                             "ret": unicorn.x86_const.UC_X86_REG_EAX}
+                             "ret": unicorn.x86_const.UC_X86_REG_EAX, "eip": unicorn.x86_const.UC_X86_REG_EIP}
             
             else:
                 logging.debug(
@@ -1358,6 +1392,30 @@ class EmuHelper():
         self.apiHooks["memset"] = flare_emu_hooks._memsetHook
         self.apiHooks["ZeroMemory"] = flare_emu_hooks._bzeroHook
         self.apiHooks["bzero"] = flare_emu_hooks._bzeroHook
+        self.apiHooks["EH_prolog"] = flare_emu_hooks._passHook
+        self.apiHooks["free"] = flare_emu_hooks._freeHook
+        self.apiHooks["cfree"] = flare_emu_hooks._freeHook
+        self.apiHooks["free_dbg"] = flare_emu_hooks._freeHook
+        self.apiHooks["free_locale"] = flare_emu_hooks._freeHook
+        self.apiHooks["freea"] = flare_emu_hooks._freeHook
+        self.apiHooks["isalnum"] = flare_emu_hooks._isalnum
+        self.apiHooks["??2@YAPAXI@Z"] = flare_emu_hooks._allocMem1Hook # c++ new
+        self.apiHooks["??3@YAXPAX@Z"] = flare_emu_hooks._freeHook # c++ delete
+        self.apiHooks["strnicoll"] = flare_emu_hooks._strnicmpHook
+        self.apiHooks["wcsnicoll"] = flare_emu_hooks._wcsnicmpHook
+        self.apiHooks["mbsnicoll"] = flare_emu_hooks._strnicmpHook
+        self.apiHooks["CryptStringToBinaryA"] = flare_emu_hooks._cryptStringToBinaryA
+        #self.apiHooks["CryptStringToBinaryW"] = flare_emu_hooks._cryptStringToBinaryW
+        self.apiHooks["CryptBinaryToStringA"] = flare_emu_hooks._cryptBinaryToStringA
+        #self.apiHooks["CryptBinaryToStringW"] = flare_emu_hooks._cryptBinaryToStringW
+        self.apiHooks["GetLastError"] = flare_emu_hooks._getLastError
+        self.apiHooks["SetLastError"] = flare_emu_hooks._setLastError
+        
+        # used for calls to addresses that are not the start of a function
+        # call $+5 for example
+        # simply emulates the call instruction
+        # we usually do not want to skip these calls
+        self.apiHooks[""] = flare_emu_hooks._callHook
         
         # builtins
         self.apiHooks["umodsi3"] = flare_emu_hooks._modHook
@@ -1430,17 +1488,17 @@ class EmuHelper():
                           (segName, self.hexString(segVA), self.hexString(endVA)))
             if segSize > 0:
                 segBytes = self.analysisHelper.getBytes(segVA, segSize)
-                self.uc.mem_write(segVA, segBytes)
+                self.writeEmuMem(segVA, segBytes)
             segLeftover = segSizeTotal - segSize
             if segLeftover > 0:
-                self.uc.mem_write(segVA + segSize, "\x00" * segLeftover)
+                self.writeEmuMem(segVA + segSize, "\x00" * segLeftover)
 
         self._buildStack()
 
     # allocs mem and writes bytes into it
     def loadBytes(self, bytes, addr=None):
         mem = self.allocEmuMem(len(bytes), addr)
-        self.uc.mem_write(mem, bytes)
+        self.writeEmuMem(mem, bytes)
         return mem
 
     def isValidEmuPtr(self, ptr):
@@ -1482,17 +1540,34 @@ class EmuHelper():
         logging.debug("mapping %s bytes @%s" %
                       (self.hexString(allocSize), self.hexString(baseAddr)))
         self.uc.mem_map(baseAddr, allocSize)
+        self.allocations[baseAddr] = allocSize
         return addr
-     
+        
+    def freeEmuMem(self, addr):
+        if addr not in self.allocations:
+            logging.debug("pointer being freed was not allocated (%s)" % self.hexString(addr))
+            return
+       
+        self.uc.mem_unmap(addr, self.allocations[addr])
+        del(self.allocations[addr])
+         
     
     def copyEmuMem(self, dstAddr, srcAddr, size, userData):
         size = self._checkMemSize(size, userData)
         try:
             mem = str(self.uc.mem_read(srcAddr, size))
-            self.uc.mem_write(dstAddr, mem)
+            self.writeEmuMem(dstAddr, mem)
         except Exception as e:
             logging.debug("exception in copyEmuMem @%s: %s" % (self.hexString(address), str(e)))
-        
+            
+    def stackPop(self, reg):
+        self.uc.reg_write(self.regs[reg], self.getEmuPtr(self.uc.reg_read(self.regs["sp"])))
+        self.uc.reg_write(self.regs["sp"], self.uc.reg_read(self.regs["sp"]) + self.size_pointer)
+    
+    def stackPush(self, value):
+        self.uc.reg_write(self.regs["sp"], self.uc.reg_read(self.regs["sp"]) - self.size_pointer)
+        self.writeEmuPtr(self.uc.reg_read(self.regs["sp"]), value)
+           
     def getCallTargetName(self, address):
         if self.analysisHelper.getOpndType(address, 0) == self.analysisHelper.o_reg:
             funcName = self.analysisHelper.getName(self.getRegVal(self.analysisHelper.getOperand(address, 0)))
@@ -1562,7 +1637,7 @@ class EmuHelper():
                       (self.hexString(address), self.hexString(userData['currAddr'])))
         try:
             uc.mem_map(address & self.pageMask, PAGESIZE)
-            uc.mem_write(address & self.pageMask, "\x00" * PAGESIZE)
+            self.writeEmuMem(address & self.pageMask, "\x00" * PAGESIZE)
             logging.debug("allocated memory to %s" % self.hexString(address))
         except Exception:
             logging.debug("error writing to %s, changing IP from %s to %s" % (self.hexString(address), self.hexString(
@@ -1575,17 +1650,17 @@ class EmuHelper():
     def _hookInterrupt(self, uc, intno, userData):
         logging.debug("interrupt #%d received @%s" % ((intno), self.hexString(userData["currAddr"])))
         if self.arch == unicorn.UC_ARCH_X86:
-            uc.mem_write(userData["currAddr"], X86NOP *
+            self.writeEmuMem(userData["currAddr"], X86NOP *
                          userData["currAddrSize"])
         elif self.arch == unicorn.UC_ARCH_ARM:
             if self.mode == unicorn.UC_MODE_THUMB:
-                uc.mem_write(userData["currAddr"],
+                self.writeEmuMem(userData["currAddr"],
                              ARMTHUMBNOP * (userData["currAddrSize"] / 2))
             else:
-                uc.mem_write(
+                self.writeEmuMem(
                     userData["currAddr"], ARMNOP * (userData["currAddrSize"] / 4))
         elif self.arch == unicorn.UC_ARCH_ARM64:
-            uc.mem_write(
+            self.writeEmuMem(
                 userData["currAddr"], ARM64NOP * (userData["currAddrSize"] / 4))
         self.enteredBlock = False
         return True
@@ -1629,7 +1704,7 @@ class EmuHelper():
 
             # if strict mode is disabled, make instructions as we go as needed
             if not userData.get("strict", True):
-                if self.analysisHelperFramework == "Radare2" or self.analysisHelper.getMnem(address) == "":
+                if self.analysisHelperFramework != "Radare2" and self.analysisHelper.getMnem(address) == "":
                     self.analysisHelper.makeInsn(address)
             
             if self.verbose > 0:
@@ -1996,7 +2071,7 @@ class EmuHelper():
                       (self.hexString(size), self.hexString(region[0])))
             self.uc.mem_map(region[0], size)
             logging.debug("copying region")
-            self.uc.mem_write(region[0], eh.getEmuBytes(region[0], size))
+            self.writeEmuMem(region[0], eh.getEmuBytes(region[0], size))
         self._buildStack()
         
 
@@ -2004,7 +2079,7 @@ class EmuHelper():
     # stack pointer will begin in the middle of allocated stack size
     def _buildStack(self):
         self.stack = self.allocEmuMem(self.stackSize) + self.stackSize / 2
-        self.uc.mem_write(self.stack - self.stackSize /
+        self.writeEmuMem(self.stack - self.stackSize /
                           2, "\x00" * self.stackSize)
 
     def _enableVFP(self):
@@ -2043,7 +2118,7 @@ class EmuHelper():
             val = registers[reg]
             if isinstance(val, str):
                 mem = self.allocEmuMem(len(val))
-                mu.mem_write(mem, val)
+                self.writeEmuMem(mem, val)
                 val = mem
             elif isinstance(val, (int, long)):
                 pass
@@ -2057,7 +2132,7 @@ class EmuHelper():
         for i in range(0, len(stack)):
             if isinstance(stack[i], str):
                 mem = self.allocEmuMem(len(stack[i]))
-                mu.mem_write(mem, stack[i])
+                self.writeEmuMem(mem, stack[i])
                 stack[i] = mem
                 val = mem
             elif isinstance(stack[i], (int, long)):
@@ -2066,5 +2141,5 @@ class EmuHelper():
                 logging.debug("incorrect type for stack[%d]" % (i))
                 return None
 
-            mu.mem_write(self.getRegVal("sp") + i *
+            self.writeEmuMem(self.getRegVal("sp") + i *
                          self.size_pointer, struct.pack(self.pack_fmt, val))

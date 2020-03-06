@@ -1,4 +1,16 @@
 import flare_emu
+import unicorn
+import base64
+import re
+import binascii
+import inspect
+import logging
+
+def _getLastError(eh, address, argv, funcName, userData):
+    eh.uc.reg_write(eh.regs["ret"], eh.errorcode)
+    
+def _setLastError(eh, address, argv, funcName, userData):
+    eh.errorcode = argv[0]
 
 # return a fake handle value
 def _returnHandleHook(eh, address, argv, funcName, userData):
@@ -749,3 +761,367 @@ def _wcsdupHook(eh, address, argv, funcName, userData):
     
 def _modHook(eh, address, argv, funcName, userData):
     eh.uc.reg_write(eh.regs["ret"], argv[0] % argv[1])
+    
+def _passHook(eh, address, argv, funcName, userData):
+    pass
+    
+def _freeHook(eh, address, argv, funcName, userData):
+    eh.freeEmuMem(argv[0])
+
+def _isalnum(eh, address, argv, funcName, userData):
+    if chr(argv[0]).isalnum():
+        eh.uc.reg_write(eh.regs["ret"], 1)
+    else:
+        eh.uc.reg_write(eh.regs["ret"], 0)
+   
+# used for calls to addresses that are not the start of a function
+# call $+5 for example
+# simply emulates the call instruction   
+def _callHook(eh, address, argv, funcName, userData):
+    if eh.arch == unicorn.UC_ARCH_X86:
+        eh.stackPush(address + userData["currAddrSize"])
+        if eh.analysisHelper.getOpndType(address, 0) == eh.analysisHelper.o_reg:
+            target = eh.getRegVal(eh.analysisHelper.getOperand(address, 0))
+        else:
+            target = eh.analysisHelper.getOpndValue(address, 0)
+        eh.uc.reg_write(eh.regs["pc"], target)
+        
+    elif eh.arch == unicorn.UC_MODE_ARM:
+        if eh.analysisHelper.getMnem(address).upper()[:2] == "BL": # BL or BLX
+            eh.uc.reg_write(eh.regs["LR"], address + userData["currAddrSize"])
+            
+        if eh.analysisHelper.getOpndType(address, 0) == eh.analysisHelper.o_reg:
+            target = eh.getRegVal(eh.analysisHelper.getOperand(address, 0))
+        else:
+            target = eh.analysisHelper.getOpndValue(address, 0)
+            
+        eh.uc.reg_write(eh.regs["pc"], target)
+        userData["changeThumbMode"] = True
+        
+    elif eh.arch == unicorn.UC_MODE_ARM64:
+        if eh.analysisHelper.getMnem(address).upper()[:2] == "BL": # BL or BLR
+            eh.uc.reg_write(eh.regs["LR"], address + userData["currAddrSize"])
+            
+        if eh.analysisHelper.getOpndType(address, 0) == eh.analysisHelper.o_reg:
+            target = eh.getRegVal(eh.analysisHelper.getOperand(address, 0))
+        else:
+            target = eh.analysisHelper.getOpndValue(address, 0)
+            
+        eh.uc.reg_write(eh.regs["pc"], target)
+        
+CRYPT_STRING_BASE64HEADER = 0
+CRYPT_STRING_BASE64 = 1
+CRYPT_STRING_BINARY = 2
+CRYPT_STRING_BASE64REQUESTHEADER = 3
+CRYPT_STRING_HEX = 4
+CRYPT_STRING_HEXASCII = 5
+CRYPT_STRING_BASE64_ANY = 6
+CRYPT_STRING_ANY = 7
+CRYPT_STRING_HEX_ANY = 8
+CRYPT_STRING_BASE64X509CRLHEADER = 9
+CRYPT_STRING_HEXADDR = 10
+CRYPT_STRING_HEXASCIIADDR = 11
+CRYPT_STRING_HEXRAW = 12
+CRYPT_STRING_STRICT = 0x20000000
+CRYPT_STRING_NOCRLF = 0x40000000
+CRYPT_STRING_NOCR = 0x80000000
+
+def _handleStr2BinBase64Header(s):
+    if (not s.startswith("-----BEGIN CERTIFICATE-----\n") or
+        not s.endswith("\n-----END CERTIFICATE-----")):
+        return None
+    s = s[28:-26]
+    try:
+        return base64.b64decode(s)
+    except:   
+        return None
+    
+# these are probably much looser than the real implementations
+def _handleStr2BinHex(s):
+    re.match(r"[ ]{8}[0-9a-f]{2}", s)
+    if m is None:
+        return None
+    try:
+        s = s.replace("\n", "").replace(" ", "")
+        return binascii.unhexlify(s)
+    except:
+        return None
+    
+def _handleStr2BinHexAscii(s):
+    re.match(r"[ ]{8}[0-9a-f]{2}", s)
+    if m is None:
+        return None
+    try:
+        # crop off ASCII chars at the end of each line
+        s = re.sub(r"^.{8}(.{48}).+$", r"\1", s, flags=re.M)
+        s = s.replace("\n", "").replace(" ", "")
+        return binascii.unhexlify(s)
+    except:
+        return None
+    
+def _handleStr2BinHexAddr(s):
+    re.match(r"[0-9a-f ]{8}[0-9a-f]{2}", s)
+    if m is None:
+        return None
+    try:
+        # crop off the address chars at the beginning of each line
+        s = re.sub(r"^.{8}(.+)$", r"\1", s, flags=re.M)
+        s = s.replace("\n", "").replace(" ", "")
+        return binascii.unhexlify(s)
+    except:
+        return None
+    
+def _handleStr2BinHexAsciiAddr(s):
+    re.match(r"[ ]{8}[0-9a-f]{2}", s)
+    if m is None:
+        return None
+    try:
+        # crop off ASCII chars at the end of each line
+        s = re.sub(r"^.{8}(.{48}).+$", r"\1", s, flags=re.M)
+        s = s.replace("\n", "").replace(" ", "")
+        return binascii.unhexlify(s)
+    except:
+        return None
+
+def _handleStr2BinHexRaw(s):
+    s = s.replace("\n", "").replace(" ", "")
+    try:
+        return binascii.unhexlify(s)
+    except:
+        return None
+    
+def _handleHookError(eh, address, retval, msg=""):
+    if msg == "":
+        msg = "no details"
+    logging.debug("error in %s hook @%s (%s)" % (inspect.stack()[1][3], eh.hexString(address), msg))
+    eh.uc.reg_write(eh.regs["ret"], retval)
+
+def _cryptStringToBinaryA(eh, address, argv, funcName, userData):
+    if eh.isValidEmuPtr(argv[0]) and eh.isValidEmuPtr(argv[4]):
+        srcLen = argv[1]
+        if srcLen != 0:
+            src = eh.getEmuBytes(argv[0], srcLen)
+        else:
+            src = eh.getEmuString(argv[0])
+            
+        if argv[5] != 0:
+            if eh.isValidEmuPtr(argv[5]):
+                src = src[eh.getEmuDword(argv[5]):]
+            else:
+                _handleHookError(eh, address, 0, "pdwSkip is not a valid pointer")
+                return
+        
+        flagUsed = argv[2]
+        if argv[2] == CRYPT_STRING_BASE64HEADER:
+            enc = _handleStr2BinBase64Header(src)
+            if enc is None:
+                _handleHookError(eh, address, 0, "CRYPT_STRING_BASE64HEADER")
+                return
+        elif argv[2] == CRYPT_STRING_BASE64:
+            try:
+                enc = base64.b64decode(src)
+            except:
+                _handleHookError(eh, address, 0, "CRYPT_STRING_BASE64")
+                return
+        elif argv[2] == CRYPT_STRING_BINARY:
+            enc = src
+        elif argv[2] == CRYPT_STRING_BASE64REQUESTHEADER:
+            if (not src.startswith("-----BEGIN NEW CERTIFICATE REQUEST-----\n") or
+                not src.endswith("\n-----END NEW CERTIFICATE REQUEST-----")):
+                _handleHookError(eh, address, 0, "could not parse CRYPT_STRING_BASE64REQUESTHEADER")
+                return
+            src = src[40:-38]
+            try:
+                enc = base64.b64decode(src)
+            except:
+                _handleHookError(eh, address, 0, "could not decode CRYPT_STRING_BASE64REQUESTHEADER")
+                return
+        elif argv[2] == CRYPT_STRING_HEX:
+            enc = _handleStr2BinHex(src)
+            if enc is None:
+                _handleHookError(eh, address, 0, "CRYPT_STRING_HEX")
+                return
+        elif argv[2] == CRYPT_STRING_HEXASCII:
+            enc = _handleStr2BinHexAscii(src)
+            if enc is None:
+                _handleHookError(eh, address, 0, "CRYPT_STRING_HEXASCII")
+                return
+        elif argv[2] == CRYPT_STRING_BASE64_ANY or argv[2] == CRYPT_STRING_ANY:
+            enc = _handleStr2BinBase64Header(src)
+            flagUsed = CRYPT_STRING_BASE64HEADER
+            if enc == None:
+                try:
+                    enc = base64.b64decode(src)
+                    flagUsed = CRYPT_STRING_BASE64
+                except:
+                    if argv[2] == CRYPT_STRING_ANY:
+                        enc = src
+                        flagUsed = CRYPT_STRING_BINARY
+                    else:
+                        _handleHookError(eh, address, 0, "none of the Base64/String cases succeeded for ANY")
+                        return
+        elif argv[2] == CRYPT_STRING_HEX_ANY:
+            enc = _handleStr2BinHexAddr(src)
+            flagUsed = CRYPT_STRING_HEXADDR
+            if enc is None:
+                enc = _handleStr2BinHexAsciiAddr(src)
+                flagUsed = CRYPT_STRING_HEXASCIIADDR
+                if enc is None:
+                    enc = _handleStr2BinHex(src)
+                    flagUsed = CRYPT_STRING_HEX
+                    if enc is None:
+                        enc = _handleStr2BinHexRaw(src)
+                        flagUsed = CRYPT_STRING_HEXRAW
+                        if enc is None:
+                            enc = _handleStr2BinHexAscii(src)
+                            flagUsed = CRYPT_STRING_HEXASCII
+                            if enc is None:
+                                _handleHookError(eh, address, 0, "none of the hex cases succeeded for ANY")
+                                return    
+        elif argv[2] == CRYPT_STRING_BASE64X509CRLHEADER:
+            if (not src.startswith("-----BEGIN X509 CRL-----\n") or
+                not src.endswith("\n-----END X509 CRL-----")):
+                _handleHookError(eh, address, 0, "could not parse CRYPT_STRING_BASE64X509CRLHEADER")
+                return
+            src = src[25:-23]
+            try:
+                enc = base64.b64decode(src)
+            except:
+                _handleHookError(eh, address, 0, "could not decode CRYPT_STRING_BASE64X509CRLHEADER")
+                return
+        elif argv[2] == CRYPT_STRING_HEXADDR:
+            enc = _handleStr2BinHexAddr(src)
+            if enc is None:
+                _handleHookError(eh, address, 0, "CRYPT_STRING_HEXADDR")
+                return
+        elif argv[2] == CRYPT_STRING_HEXASCIIADDR:
+            enc = _handleStr2BinHexAsciiAddr(src)
+            if enc is None:
+                _handleHookError(eh, address, 0, "CRYPT_STRING_HEXASCIIADDR")
+                return
+        elif argv[2] == CRYPT_STRING_HEXRAW:
+            enc = _handleStr2BinHexRaw(src)
+            if enc is None:
+                _handleHookError(eh, address, 0, "CRYPT_STRING_HEXRAW")
+                return
+        
+        if argv[6] != 0 and eh.isValidEmuPtr(argv[6]):
+            eh.writeEmuDword(argv[6], flagUsed)  
+      
+        dstSize = eh.getEmuDword(argv[4])
+        eh.writeEmuDword(argv[4], len(enc))
+        if argv[3] == 0:
+            eh.uc.reg_write(eh.regs["ret"], 1)
+            return
+        
+        if dstSize < len(enc):
+            _setLastError(eh, address, [flare_emu.ERROR_MORE_DATA], funcName, userData)
+            _handleHookError(eh, address, 0, "ERROR_MORE_DATA")
+            return
+            
+        dstRegion = eh.getEmuMemRegion(argv[3])
+        maxBufSize = eh._checkMemSize(dstSize, userData)
+        if dstRegion is None:
+            logging.debug("dest memory does not exist for CryptStringToBinaryA @%s" % eh.hexString(address))
+            dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(maxBufSize))
+            argv[3] = dstRegion[0]
+        
+        eh.uc.mem_write(argv[3], enc)
+        eh.uc.reg_write(eh.regs["ret"], 1)
+        return
+
+    eh.uc.reg_write(eh.regs["ret"], 0)
+    
+def hexdump(data, addrs=False, ascii=False):
+    out = ""
+    offs = 0
+    hexed = binascii.hexlify(data)
+    for line in (hexed[i:i+32] for i in range(0, len(hexed), 32)):
+        line = " ".join(line[j:j+2] for j in range(0, len(line), 2))
+        if addrs:
+            prefix = "%04x" % offs
+            prefix = prefix.ljust(8, ' ')
+        else:
+            prefix = " " * 8
+        
+        line = prefix + line[:24] + " " + line[24:]
+        
+        # crop off middle space if less than 8 bytes on line
+        if len(data) - offs < 8:
+            line = line[:-1]
+        
+        if ascii:
+            line = line.ljust(59, ' ')
+            suffix = ""
+            for c in data[offs:offs+16]:
+                if 0x20 <= ord(c) <= 0x7e:
+                    suffix += c
+                else:
+                    suffix += "."
+                    
+            line += suffix
+            
+        out += line + "\n"
+        offs += 0x10
+        
+    return out
+    
+def _cryptBinaryToStringA(eh, address, argv, funcName, userData):
+    if eh.isValidEmuPtr(argv[0]) and eh.isValidEmuPtr(argv[4]):
+        srcLen = argv[1]
+        src = eh.getEmuBytes(argv[0], srcLen)
+        flagsLower = argv[2] & 0xffff
+        flagsUpper = argv[2] & 0xffff0000
+        if flagsLower == CRYPT_STRING_BASE64HEADER:
+            enc = base64.b64encode(src)
+            enc = "-----BEGIN CERTIFICATE-----\n" + enc + "\n-----END CERTIFICATE-----"
+        elif flagsLower == CRYPT_STRING_BASE64:
+            enc = base64.b64encode(src)
+        elif flagsLower == CRYPT_STRING_BINARY:
+            enc = src
+        elif flagsLower == CRYPT_STRING_BASE64REQUESTHEADER:
+            enc = base64.b64encode(src)
+            enc = "-----BEGIN NEW CERTIFICATE REQUEST-----\n" + enc + "\n-----END NEW CERTIFICATE REQUEST-----"
+        elif flagsLower == CRYPT_STRING_HEX:
+            enc = hexdump(src)
+        elif flagsLower == CRYPT_STRING_HEXASCII:
+            enc = hexdump(src, ascii=True)
+        elif flagsLower == CRYPT_STRING_BASE64X509CRLHEADER:
+            enc = base64.b64encode(src)
+            enc = "-----BEGIN X509 CRL-----\n" + enc + "\n-----END X509 CRL-----"
+        elif flagsLower == CRYPT_STRING_HEXADDR:
+            enc = hexdump(src, addrs=True)
+        elif flagsLower == CRYPT_STRING_HEXASCIIADDR:
+            enc = hexdump(src, True, True)
+        elif flagsLower == CRYPT_STRING_HEXRAW:
+            src = binascii.hexlify(src)
+            enc = " ".join(src[i:i+2] for i in range(0, len(src), 2))
+            
+        #TODO: handle ending newline flags
+      
+        dstSize = eh.getEmuDword(argv[4])
+        eh.writeEmuDword(argv[4], len(enc))
+        if argv[3] == 0:
+            eh.uc.reg_write(eh.regs["ret"], 1)
+            return
+        
+        if dstSize < len(enc):
+            _setLastError(eh, address, [flare_emu.ERROR_MORE_DATA], funcName, userData)
+            _handleHookError(eh, address, 0, "ERROR_MORE_DATA")
+            return
+            
+        dstRegion = eh.getEmuMemRegion(argv[3])
+        maxBufSize = eh._checkMemSize(dstSize, userData)
+        if dstRegion is None:
+            logging.debug("dest memory does not exist for CryptBinaryToStringA @%s" % eh.hexString(address))
+            dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(maxBufSize))
+            argv[3] = dstRegion[0]
+        
+        eh.uc.mem_write(argv[3], enc)
+        eh.uc.reg_write(eh.regs["ret"], 1)
+        return
+
+    eh.uc.reg_write(eh.regs["ret"], 0)
+    
+# def _cryptStringToBinaryW(eh, address, argv, funcName, userData):
+    
