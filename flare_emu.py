@@ -28,16 +28,14 @@ import flare_emu_hooks
 import types
 import sys
 
-# for debug purpose 
-# logging.basicConfig(level=logging.DEBUG)
 
 
 PAGESIZE = 0x1000
 PAGEALIGNCHECK = 0xfff
-X86NOP = "\x90"
-ARMTHUMBNOP = "\x00\xbf"
-ARMNOP = "\x00\xf0\x20\xe3"
-ARM64NOP = "\x1f\x20\x03\xd5"
+X86NOP = b"\x90"
+ARMTHUMBNOP = b"\x00\xbf"
+ARMNOP = b"\x00\xf0\x20\xe3"
+ARM64NOP = b"\x1f\x20\x03\xd5"
 MAX_ALLOC_SIZE = 10 * 1024 * 1024
 MAXCODEPATHS = 20
 MAXNODESEARCH = 100000
@@ -847,16 +845,18 @@ class EmuHelper():
     # returns null-terminated string of bytes from the emulator's memory, starting at addr, do not necessarily need
     # to be printable characters
     def getEmuString(self, addr):
-        out = ""
+        # return a bytearray object , if you want to get a str object ,you must decode it by  latin1
+        out = bytearray()
         while self.uc.mem_read(addr, 1) != b"\x00":
-            out += self.uc.mem_read(addr, 1).decode("latin1")
+            out += self.uc.mem_read(addr, 1)
             addr += 1
         return out
     
     def getEmuWideString(self, addr):
-        out = ""
+        # return a bytearray object , if you want to get a str object ,you must decode it by  utf-16le
+        out = bytearray()
         while self.uc.mem_read(addr, 2) != b"\x00\x00":
-            out += self.uc.mem_read(addr, 2).decode("utf-16le")
+            out += self.uc.mem_read(addr, 2)
             addr += 2
         return out
 
@@ -1435,11 +1435,8 @@ class EmuHelper():
             if segSize > 0:
                 segBytes = self.analysisHelper.getBytes(segVA, segSize)
                 self.uc.mem_write(segVA, segBytes)
-                # logging.debug("segsize: {}".format( self.uc.mem_read(segVA, segSize) ))
-
             segLeftover = segSizeTotal - segSize
             if segLeftover > 0:
-
                 self.uc.mem_write(segVA + segSize, b"\x00" * segLeftover)
         self._buildStack()
 
@@ -1528,12 +1525,6 @@ class EmuHelper():
             else:
                 sp = self.getRegVal("esp")
                 argv = [
-                    # struct.unpack("<I", str(self.uc.mem_read(sp, 4)))[0],
-                    # struct.unpack("<I", str(self.uc.mem_read(sp + 4, 4)))[0],
-                    # struct.unpack("<I", str(self.uc.mem_read(sp + 8, 4)))[0],
-                    # struct.unpack("<I", str(self.uc.mem_read(sp + 12, 4)))[0],
-                    # struct.unpack("<I", str(self.uc.mem_read(sp + 16, 4)))[0],
-                    # struct.unpack("<I", str(self.uc.mem_read(sp + 20, 4)))[0]
                     struct.unpack("<I", self.uc.mem_read(sp, 4))[0],
                     struct.unpack("<I", self.uc.mem_read(sp + 4, 4))[0],
                     struct.unpack("<I", self.uc.mem_read(sp + 8, 4))[0],
@@ -1687,9 +1678,6 @@ class EmuHelper():
                         
                 funcName = self.getCallTargetName(address)
                 if userData["callHook"]:
-                    # print("argv: ",self.getArgv())
-                    # print("userData[callhook]: ",userData["callHook"])
-
                     userData["callHook"](address, self.getArgv(), funcName, userData)
 
                 if self.arch == unicorn.UC_ARCH_ARM:
@@ -1862,11 +1850,8 @@ class EmuHelper():
                  
                 funcName = self.getCallTargetName(address)
                 if userData["callHook"]:
-                    # print("argv: ",self.getArgv())
-                    # print("userData[callhook]: ",userData["callHook"])
-
                     userData["callHook"](address, self.getArgv(), funcName, userData)
-                
+
                 if self.arch == unicorn.UC_ARCH_ARM:
                     userData["changeThumbMode"] = True
 
@@ -1891,8 +1876,6 @@ class EmuHelper():
                 return
 
         except Exception as e:
-            logging.exception(e)
-
             logging.debug("exception in _guidedHook @%s: %s" % (self.hexString(address), e))
             print("exception in _guidedHook @%s: %s" % (self.hexString(address), e))
             self.stopEmulation(userData)
@@ -1913,7 +1896,6 @@ class EmuHelper():
             argv = self.getArgv()
             userData["targetCallback"](self, address, argv, userData)
         except Exception as e:
-            logging.exception(e)
             logging.debug("exception in targetCallback function @%s: %s" % (self.hexString(address), str(e)))
             print("exception in targetCallback function @%s: %s" % (self.hexString(address), str(e)))
         userData["visitedTargets"].append(address)
@@ -2026,9 +2008,7 @@ class EmuHelper():
     # stack pointer will begin in the middle of allocated stack size
     def _buildStack(self):
         self.stack = self.allocEmuMem(self.stackSize) + self.stackSize // 2 # fix for python3 
-        # print("stack_size: ",self.stackSize)
         self.uc.mem_write(self.stack - self.stackSize// 2, (b"\x00") * self.stackSize)
-        # self.uc.mem_write(self.stack - self.stackSize/2,b"\xd5\xe3")
 
     def _enableVFP(self):
         if self.arch == unicorn.UC_ARCH_ARM:

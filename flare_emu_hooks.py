@@ -107,7 +107,7 @@ def _strlenHook(eh, address, argv, funcName, userData):
         
 def _wcslenHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]):
-        eh.uc.reg_write(eh.regs["ret"], len(eh.getEmuWideString(argv[0])))
+        eh.uc.reg_write(eh.regs["ret"], len(eh.getEmuWideString(argv[0]).decode("utf-16le") ))
     else:
         eh.uc.reg_write(eh.regs["ret"], 0)
 
@@ -123,7 +123,7 @@ def _strnlenHook(eh, address, argv, funcName, userData):
 def _wcsnlenHook(eh, address, argv, funcName, userData):
     strnlen = eh._checkMemSize(argv[1], userData)
     if eh.isValidEmuPtr(argv[0]):
-        strlen = len(eh.getEmuWideString(argv[0]))
+        strlen = len(eh.getEmuWideString(argv[0]).decode("utf-16le"))
         if strlen > strnlen:
             strlen = argv[1]
         eh.uc.reg_write(eh.regs["ret"], strnlen)
@@ -186,8 +186,8 @@ def _strnicmpHook(eh, address, argv, funcName, userData):
     
 def _wcscmpHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]) and eh.isValidEmuPtr(argv[1]):
-        str1 = eh.getEmuWideString(argv[1])
-        str2 = eh.getEmuWideString(argv[0])
+        str1 = eh.getEmuWideString(argv[1]).decode("utf-16le")
+        str2 = eh.getEmuWideString(argv[0]).decode("utf-16le")
         if str1 == str2:
             eh.uc.reg_write(eh.regs["ret"], 0)
             return
@@ -200,8 +200,8 @@ def _wcscmpHook(eh, address, argv, funcName, userData):
 def _wcsncmpHook(eh, address, argv, funcName, userData):
     strnlen = eh._checkMemSize(argv[2], userData)
     if eh.isValidEmuPtr(argv[0]) and eh.isValidEmuPtr(argv[1]):
-        str1 = eh.getEmuWideString(argv[1])
-        str2 = eh.getEmuWideString(argv[0])
+        str1 = eh.getEmuWideString(argv[1]).decode("utf-16le")
+        str2 = eh.getEmuWideString(argv[0]).decode("utf-16le")
         if str1[:strnlen] == str2[:strnlen]:
             eh.uc.reg_write(eh.regs["ret"], 0)
             return
@@ -213,8 +213,8 @@ def _wcsncmpHook(eh, address, argv, funcName, userData):
     
 def _wcsicmpHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]) and eh.isValidEmuPtr(argv[1]):
-        str1 = eh.getEmuWideString(argv[1])
-        str2 = eh.getEmuWideString(argv[0])
+        str1 = eh.getEmuWideString(argv[1]).decode("utf-16le")
+        str2 = eh.getEmuWideString(argv[0]).decode("utf-16le")
         if str1.lower() == str2.lower():
             eh.uc.reg_write(eh.regs["ret"], 0)
             return
@@ -227,8 +227,8 @@ def _wcsicmpHook(eh, address, argv, funcName, userData):
 def _wcsnicmpHook(eh, address, argv, funcName, userData):
     strnlen = eh._checkMemSize(argv[2], userData)
     if eh.isValidEmuPtr(argv[0]) and eh.isValidEmuPtr(argv[1]):
-        str1 = eh.getEmuWideString(argv[1])
-        str2 = eh.getEmuWideString(argv[0])
+        str1 = eh.getEmuWideString(argv[1]).decode("utf-16le")
+        str2 = eh.getEmuWideString(argv[0]).decode("utf-16le")
         if str1[:strnlen].lower() == str2[:strnlen].lower():
             eh.uc.reg_write(eh.regs["ret"], 0)
             return
@@ -240,14 +240,14 @@ def _wcsnicmpHook(eh, address, argv, funcName, userData):
     
 def _strcpyHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[1]):
-        src = eh.getEmuString(argv[1]) + "\x00"
+        src = eh.getEmuString(argv[1]) + b"\x00"
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
             logging.debug("dest memory does not exist for strcpy @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(len(src)))
             argv[0] = dstRegion[0]
         if len(src) <= dstRegion[1] - argv[0]:
-            eh.uc.mem_write(argv[0], src.encode("latin1"))
+            eh.uc.mem_write(argv[0], src)
             eh.uc.reg_write(eh.regs["ret"], argv[0])
             return
         else:
@@ -270,8 +270,8 @@ def _strncpyHook(eh, address, argv, funcName, userData):
             argv[0] = dstRegion[0]
         if strnlen <= dstRegion[1] - argv[0]:
             if strnlen > len(src):
-                src = src.ljust(strnlen, "\x00") # str object must encode to bytes
-            eh.uc.mem_write( argv[0], src.encode("latin1") )
+                src = src.ljust(strnlen, b"\x00") 
+            eh.uc.mem_write( argv[0], src)
             eh.uc.reg_write( eh.regs["ret"], argv[0] )
             return
         else:
@@ -295,7 +295,7 @@ def _strncpysHook(eh, address, argv, funcName, userData):
         
         strnlen = min(strnlen, len(src))
         if strnlen + 1 <= dstRegion[1] - argv[0]:
-            eh.uc.mem_write(argv[0], src.encode("latin1") + b"\x00")
+            eh.uc.mem_write(argv[0], src + b"\x00")
             eh.uc.reg_write(eh.regs["ret"], 0)
             return
         else:
@@ -309,14 +309,14 @@ def _strncpysHook(eh, address, argv, funcName, userData):
    
 def _wcscpyHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[1]):
-        src = eh.getEmuWideString(argv[1]) + "\x00\x00"
+        src = eh.getEmuWideString(argv[1]) + b"\x00\x00"
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
             logging.debug("dest memory does not exist for wcscpy @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(len(src)))
             argv[0] = dstRegion[0]
         if len(src) <= dstRegion[1] - argv[0]:
-            eh.uc.mem_write(argv[0], src.encode("utf-16le") )
+            eh.uc.mem_write(argv[0], src)
             eh.uc.reg_write(eh.regs["ret"], argv[0])
             return
         else:
@@ -339,8 +339,8 @@ def _wcsncpyHook(eh, address, argv, funcName, userData):
             argv[0] = dstRegion[0]
         if strnlen <= dstRegion[1] - argv[0]:
             if strnlen > len(src):
-                src = src.ljust(strnlen, "\x00")
-            eh.uc.mem_write(argv[0], src.encode("utf-16le"))
+                src = src.ljust(strnlen, b"\x00")
+            eh.uc.mem_write(argv[0], src)
             eh.uc.reg_write(eh.regs["ret"], argv[0])
             return
         else:
@@ -364,8 +364,8 @@ def _wcsncpysHook(eh, address, argv, funcName, userData):
             
         strnlen = min(strnlen, len(src))
         if strnlen + 2 <= dstRegion[1] - argv[0]:
-            src = src[:strnlen] + "\x00\x00"
-            eh.uc.mem_write(argv[0], src.encode("utf-16le"))
+            src = src[:strnlen] + b"\x00\x00"
+            eh.uc.mem_write(argv[0], src)
             eh.uc.reg_write(eh.regs["ret"], 0)
             return
         else:
@@ -404,11 +404,11 @@ def _mbstowcsHook(eh, address, argv, funcName, userData):
             argv[0] = dstRegion[0]
 
         if argv[2] > len(src):
-            src = src.ljust(argv[2], "\x00")
+            src = src.ljust(argv[2], b"\x00")
         else:
-            src += "\x00"
-        if len(src.encode("utf-16")[2:]) <= dstRegion[1] - argv[0]:
-            eh.uc.mem_write(argv[0], src.encode("utf-16le"))
+            src += b"\x00"
+        if len(src.encode("utf-16le")) <= dstRegion[1] - argv[0]:
+            eh.uc.mem_write(argv[0], src)
             eh.uc.reg_write(eh.regs["ret"], len(src))
             return
         else:
@@ -418,13 +418,13 @@ def _mbstowcsHook(eh, address, argv, funcName, userData):
     
 def _mbtowcHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[1]):
-        src = eh.getEmuString(argv[1])[0]
+        src = eh.getEmuString(argv[1]).decode("latin1")[0]
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
             logging.debug("dest memory does not exist for mbtowc variant @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(0x1000))
             argv[0] = dstRegion[0]
-        eh.uc.mem_write(argv[0], src.encode("utf-16")[2:4] + "\x00\x00")
+        eh.uc.mem_write(argv[0], src.encode("utf-16le")[0:2] + b"\x00\x00")
         eh.uc.reg_write(eh.regs["ret"], 1)
         return
 
@@ -435,7 +435,7 @@ def _mbstowcsHook(eh, address, argv, funcName, userData):
         maxBufSize = eh._checkMemSize(argv[2] * 2, userData)
         src = eh.getEmuString(argv[1])
         if len(src) < argv[2]:
-            src += "\x00"
+            src += b"\x00"
         else:
             src = src[:argv[2]]
         dstRegion = eh.getEmuMemRegion(argv[0])
@@ -444,7 +444,7 @@ def _mbstowcsHook(eh, address, argv, funcName, userData):
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(maxBufSize))
             argv[0] = dstRegion[0]
         if len(src) * 2 + 2 <= dstRegion[1] - argv[0]:
-            eh.uc.mem_write(argv[0], src.encode("utf-16")[2:] + b"\x00\x00")
+            eh.uc.mem_write(argv[0], src.decode("latin1").encode("utf-16le") + b"\x00\x00")
             eh.uc.reg_write(eh.regs["ret"], len(src.replace("\x00", "")))
             return
         else:
@@ -454,7 +454,7 @@ def _mbstowcsHook(eh, address, argv, funcName, userData):
     
 def _wctombHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[1]):
-        src = eh.getEmuWideString(argv[1])
+        src = eh.getEmuWideString(argv[1]).decode("utf-16le")
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
             logging.debug("dest memory does not exist for wctomb variant @%s" % eh.hexString(address))
@@ -469,7 +469,7 @@ def _wctombHook(eh, address, argv, funcName, userData):
 def _wcstombsHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[1]):
         bufSize = eh._checkMemSize(argv[2], userData)
-        src = eh.getEmuWideString(argv[1])
+        src = eh.getEmuWideString(argv[1]).decode("utf-16le")
         if len(src) < argv[2]:
             src += "\x00"
         else:
@@ -495,13 +495,13 @@ def _multiByteToWideCharHook(eh, address, argv, funcName, userData):
         src = eh.getEmuString(argv[2])
         srcLen = eh.getSignedValue(argv[3])
         if srcLen == -1:
-            src += "\x00"
+            src += b"\x00"
             maxBufSize = eh._checkMemSize(len(src) * 2, userData)
         else:
             maxBufSize = eh._checkMemSize(srcLen * 2, userData)
         
         if len(src) < srcLen:
-            src += "\x00"
+            src += b"\x00"
         elif srcLen != -1:
             src = src[:srcLen]
             
@@ -514,7 +514,7 @@ def _multiByteToWideCharHook(eh, address, argv, funcName, userData):
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(maxBufSize))
             argv[4] = dstRegion[0]
         if len(src) * 2 + 2 <= dstRegion[1] - argv[4]:
-            eh.uc.mem_write(argv[4], src.encode("utf-16")[2:] + b"\x00\x00")
+            eh.uc.mem_write(argv[4], src.decode("latin1").encode("utf-16le") + b"\x00\x00")
             eh.uc.reg_write(eh.regs["ret"], len(src))
             return
         else:
@@ -524,7 +524,7 @@ def _multiByteToWideCharHook(eh, address, argv, funcName, userData):
     
 def _wideCharToMultiByteHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[2]):
-        src = eh.getEmuWideString(argv[2])
+        src = eh.getEmuWideString(argv[2]).decode("utf-16le")
         srcLen = eh.getSignedValue(argv[3])
         if srcLen == -1:
             src += "\x00"
@@ -546,7 +546,7 @@ def _wideCharToMultiByteHook(eh, address, argv, funcName, userData):
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(maxBufSize))
             argv[4] = dstRegion[0]
         if len(src) + 1 <= dstRegion[1] - argv[4]:
-            eh.uc.mem_write(argv[4], (src + "\x00").encode("utf-16le") )
+            eh.uc.mem_write(argv[4], (src + "\x00").encode("latin1") )
             eh.uc.reg_write(eh.regs["ret"], len(src))
             return
         else:
@@ -586,7 +586,7 @@ def _bzeroHook(eh, address, argv, funcName, userData):
     
 def _strcatHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[1]):
-        src = eh.getEmuString(argv[1]) + "\x00"
+        src = eh.getEmuString(argv[1]) + b"\x00"
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
             logging.debug("dest memory does not exist for strcat @%s" % eh.hexString(address))
@@ -594,7 +594,7 @@ def _strcatHook(eh, address, argv, funcName, userData):
             argv[0] = dstRegion[0]
         dst = eh.getEmuString(argv[0])
         if len(dst) + len(src) <= dstRegion[1] - argv[0]:
-            eh.uc.mem_write( argv[0], (dst + src).encode("latin1") )
+            eh.uc.mem_write( argv[0], dst + src )
             eh.uc.reg_write(eh.regs["ret"], argv[0])
             return
 
@@ -612,7 +612,7 @@ def _strncatHook(eh, address, argv, funcName, userData):
             argv[0] = dstRegion[0]
         dst = eh.getEmuString(argv[0])
         if len(dst) + strnlen + 1 <= dstRegion[1] - argv[0]:
-            eh.uc.mem_write(argv[0], (dst + src[:strnlen] + "\x00").encode("latin1") )
+            eh.uc.mem_write(argv[0], dst + src[:strnlen] + b"\x00" )
             eh.uc.reg_write(eh.regs["ret"], argv[0])
             return
 
@@ -620,7 +620,7 @@ def _strncatHook(eh, address, argv, funcName, userData):
 
 def _wcscatHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[1]):
-        src = eh.getEmuWideString(argv[1]) + "\x00\x00"
+        src = eh.getEmuWideString(argv[1]) + b"\x00\x00"
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
             logging.debug("dest memory does not exist for wcscat @%s" % eh.hexString(address))
@@ -628,7 +628,7 @@ def _wcscatHook(eh, address, argv, funcName, userData):
             argv[0] = dstRegion[0]
         dst = eh.getEmuWideString(argv[0])
         if len(dst) + len(src) <= dstRegion[1] - argv[0]:
-            eh.uc.mem_write(argv[0], (dst + src).encode("utf-16le") )
+            eh.uc.mem_write(argv[0], dst + src )
             eh.uc.reg_write(eh.regs["ret"], argv[0])
             return
 
@@ -646,7 +646,7 @@ def _wcsncatHook(eh, address, argv, funcName, userData):
             argv[0] = dstRegion[0]
         dst = eh.getEmuWideString(argv[0])
         if len(dst) + strnlen + 2 <= dstRegion[1] - argv[0]:
-            eh.uc.mem_write(argv[0], dst.encode("utf-16le") + src[:strnlen].encode("utf-16le") + b"\x00\x00")
+            eh.uc.mem_write(argv[0], dst + src[:strnlen] + b"\x00\x00")
             eh.uc.reg_write(eh.regs["ret"], argv[0])
             return
 
@@ -654,7 +654,7 @@ def _wcsncatHook(eh, address, argv, funcName, userData):
     
 def _strchrHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]):
-        s = eh.getEmuString(argv[0])
+        s = eh.getEmuString(argv[0]).decode("latin1")
         idx = s.find(chr(argv[1] & 0xFF))
         if idx != -1:
             eh.uc.reg_write(eh.regs["ret"], argv[0] + idx)
@@ -664,7 +664,7 @@ def _strchrHook(eh, address, argv, funcName, userData):
 
 def _wcschrHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]):
-        s = eh.getEmuWideString(argv[0])
+        s = eh.getEmuWideString(argv[0]).decode("utf-16le")
         idx = s.find(chr(argv[1] & 0xFF))
         if idx != -1:
             eh.uc.reg_write(eh.regs["ret"], argv[0] + idx * 2)
@@ -674,7 +674,7 @@ def _wcschrHook(eh, address, argv, funcName, userData):
 
 def _strrchrHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]):
-        s = eh.getEmuString(argv[0])
+        s = eh.getEmuString(argv[0]).decode("latin1")
         idx = s.rfind(chr(argv[1] & 0xFF))
         if idx != -1:
             eh.uc.reg_write(eh.regs["ret"], argv[0] + idx)
@@ -684,7 +684,7 @@ def _strrchrHook(eh, address, argv, funcName, userData):
         
 def _wcsrchrHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]):
-        s = eh.getEmuWideString(argv[0])
+        s = eh.getEmuWideString(argv[0]).decode("utf-16le")
         idx = s.rfind(chr(argv[1] & 0xFF))
         if idx != -1:
             eh.uc.reg_write(eh.regs["ret"], argv[0] + idx * 2)
@@ -694,7 +694,7 @@ def _wcsrchrHook(eh, address, argv, funcName, userData):
     
 def _strlwrHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]):
-        s = eh.getEmuString(argv[0])
+        s = eh.getEmuString(argv[0]).decode("latin1")
         eh.uc.mem_write(argv[0], s.lower().encode("latin1"))
         eh.uc.reg_write(eh.regs["ret"], argv[0])
         return
@@ -703,7 +703,7 @@ def _strlwrHook(eh, address, argv, funcName, userData):
     
 def _struprHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]):
-        s = eh.getEmuString(argv[0])
+        s = eh.getEmuString(argv[0]).decode("latin1")
         eh.uc.mem_write(argv[0], s.upper().encode("latin1"))
         eh.uc.reg_write(eh.regs["ret"], argv[0])
         return
@@ -712,7 +712,7 @@ def _struprHook(eh, address, argv, funcName, userData):
     
 def _wcslwrHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]):
-        s = eh.getEmuWideString(argv[0])
+        s = eh.getEmuWideString(argv[0]).decode("utf-16le")
         eh.uc.mem_write(argv[0], s.lower().encode("utf-16le"))
         eh.uc.reg_write(eh.regs["ret"], argv[0])
         return
@@ -721,7 +721,7 @@ def _wcslwrHook(eh, address, argv, funcName, userData):
     
 def _wcsuprHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]):
-        s = eh.getEmuWideString(argv[0])
+        s = eh.getEmuWideString(argv[0]).decode("utf-16le")
         eh.uc.mem_write(argv[0], s.upper().encode("utf-16le"))
         eh.uc.reg_write(eh.regs["ret"], argv[0])
         return
@@ -732,7 +732,7 @@ def _strdupHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]):
         s = eh.getEmuString(argv[0])
         memAddr = eh.allocEmuMem(len(s) + 1)
-        eh.uc.mem_write(memAddr, s.encode("latin1"))
+        eh.uc.mem_write(memAddr, s)
         eh.uc.reg_write(eh.regs["ret"], memAddr)
         return
     
@@ -742,7 +742,7 @@ def _wcsdupHook(eh, address, argv, funcName, userData):
     if eh.isValidEmuPtr(argv[0]):
         s = eh.getEmuWideString(argv[0])
         memAddr = eh.allocEmuMem(len(s) + 2)
-        eh.uc.mem_write(memAddr, s.encode("utf-16le"))
+        eh.uc.mem_write(memAddr, s)
         eh.uc.reg_write(eh.regs["ret"], memAddr)
         return
     
