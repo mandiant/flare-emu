@@ -77,7 +77,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         self.clearCache()
         
         self._additionalAnalysis()
-
+        
     def _additionalAnalysis(self):
         # label j_ functions
         candidates = map(lambda x: x['offset'], 
@@ -401,7 +401,12 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
                                            re.match(r"entry[\d]+$", x['name']) == None, 
                                            self.cache['fn']['all'])[0]['name']
                 except:
-                    ret = ""
+                    try:
+                        ret = filter(lambda x: x['offset'] == addr and 
+                                               re.match(r"entry[\d]+$", x['name']) == None, 
+                                               self.cache['fn']['all'])[0]['name']
+                    except:                       
+                        ret = ""
         return ret
 
     def getNameAddr(self, name):
