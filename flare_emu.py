@@ -2036,7 +2036,7 @@ class EmuHelper():
             MSR  CPACR_EL1, X2
             NOP # <-- handle Unicorn bug
             """
-            ENABLE_VFP_CODE = "\x42\x10\x38\xd5\x42\x04\x6c\xb2\x42\x10\x18\xd5\x1f\x20\x03\xd5"
+            ENABLE_VFP_CODE = b"\x42\x10\x38\xd5\x42\x04\x6c\xb2\x42\x10\x18\xd5\x1f\x20\x03\xd5"
             self.emulateBytes(ENABLE_VFP_CODE)
 
     # prepare thread context
