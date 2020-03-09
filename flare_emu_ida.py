@@ -175,7 +175,7 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
         return idaapi.get_sp_delta(f, addr)
 
     def getXrefsTo(self, addr):
-        return map(lambda x: x.frm, list(idautils.XrefsTo(addr)))
+        return list(map(lambda x: x.frm, list(idautils.XrefsTo(addr))))
 
     def getArch(self):
         return self.arch

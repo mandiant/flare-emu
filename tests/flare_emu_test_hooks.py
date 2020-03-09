@@ -64,24 +64,24 @@ tests = {"from MultiByteToWideChar\r\n":["this is a test".encode("utf-16"), 15],
         }
  
 def iterateHook(eh, address, argv, userData):
-    testString = eh.getEmuString(argv[0])
+    testString = eh.getEmuString(argv[0]).decode("latin1")
     for test in tests:
         if test in testString:
             print("testing '%s'" % testString.replace("\r\n", ""))
             for i in range(len(tests[test])):
-                if isinstance(tests[test][i], str):
-                    if tests[test][i][:2] == "\xff\xfe":
+                if isinstance(tests[test][i], bytes) or isinstance(tests[test][i], str) :
+                    if tests[test][i][:2] == b"\xff\xfe":
                         expected = tests[test][i][2:]
                         actual = eh.getEmuWideString(argv[i+1])
                     else:
                         expected = tests[test][i]
-                        actual = eh.getEmuString(argv[i+1])
+                        actual = eh.getEmuString(argv[i+1]).decode("latin1")
                 else:
                     expected = tests[test][i]
                     actual = argv[i+1]
-                    
+                
                 if expected != actual:
-                    print("FAILED: %s does not match expected result %s" % (repr(actual), repr(expected)))
+                    print("FAILED: %s does not match expected result %s" % (actual,expected))
             return
     print("%s: test not found" % (testString.replace("\r\n", "")))
     

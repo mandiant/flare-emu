@@ -31,7 +31,7 @@ def decode(argv):
     print("testing emulateRange feature for _xorCrypt function")
     myEH.emulateRange(myEH.analysisHelper.getNameAddr("_xorCrypt"), registers = {"arg1":argv[0], "arg2":argv[1], 
                            "arg3":argv[2], "arg4":argv[3]})
-    return myEH.getEmuString(argv[0])
+    return myEH.getEmuString(argv[0]).decode("latin1")
     
 def ch(address, argv, funcName, userData):
     eh = userData["EmuHelper"]
@@ -44,7 +44,7 @@ def ch(address, argv, funcName, userData):
             print("emulateRange xorCrypt passed")
     
 def iterateHook(eh, address, argv, userData):
-    fmtStr = eh.getEmuString(argv[0])
+    fmtStr = eh.getEmuString(argv[0]).decode("latin1")
     if fmtStr[0] != "%" or fmtStr[-1:] != "\n":
         print("FAILED: printf getting wrong arguments @ %016X" % address)
     else:
