@@ -350,7 +350,10 @@ class EmuHelper():
     def emulateSelection(self, registers=None, stack=None, instructionHook=None, callHook=None,
                      memAccessHook=None, hookData=None, skipCalls=True, hookApis=True, count=0):
         import idaapi
-        selection = idaapi.read_selection()
+        try:
+            selection = idaapi.read_selection()
+        except TypeError:
+            selection = idaapi.read_range_selection(None)
         if selection[0]:
             self.emulateRange(selection[1], selection[2], registers, stack, instructionHook, 
                               callHook, memAccessHook, hookData, skipCalls, hookApis, count=count)
