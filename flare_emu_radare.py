@@ -18,7 +18,7 @@ class BasicBlock():
         self.flowchart = flowchart
 
     def succs(self):
-        for z in map(lambda x: self.getBlockByAddr(x), filter(lambda y: y != -1, self.successors)):
+        for z in list(map(lambda x: self.getBlockByAddr(x), list(filter(lambda y: y != -1, self.successors)))):
             yield z
 
     def getBlockByAddr(self, addr):
@@ -59,7 +59,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         if useProjects:
             if projectName is None:
                 projectName = self._getFileNameFromPath(path)
-            prj = filter(lambda x: x == projectName, self.r.cmdj("Pj"))
+            prj = list(filter(lambda x: x == projectName, self.r.cmdj("Pj")))
             if len(prj) > 0:
                 self.r.cmd("Po %s" % projectName)
             else:
@@ -80,11 +80,11 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         
     def _additionalAnalysis(self):
         # label j_ functions
-        candidates = map(lambda x: x['offset'], 
-                            filter(lambda y: y['nbbs'] == 1 and 
+        candidates = list(map(lambda x: x['offset'], 
+                            list(filter(lambda y: y['nbbs'] == 1 and 
                             y['size'] <= 10, 
-                            self.r.cmdj("aflj"))
-                         )
+                            self.r.cmdj("aflj")))
+                         ))
         for candidate in candidates:
             try:
                 if self._getBasicBlocks(candidate)[0]['ninstr'] == 1 and self.getMnem(candidate) == "jmp":
@@ -127,16 +127,16 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
     # cache instructions, blocks, and opcodes for a function
     def _cacheFunc(self, funcAddr):
         insns = self._getFuncInsns(funcAddr)   
-        cachedInsns = map(lambda x: x['offset'], self.cache['pd'])
-        self.cache['pd'] += filter(lambda x: x['offset'] not in cachedInsns, insns)
+        cachedInsns = list(map(lambda x: x['offset'], self.cache['pd']))
+        self.cache['pd'] += list(filter(lambda x: x['offset'] not in cachedInsns, insns))
         self.r.cmd("pd 50 @%d" % funcAddr) # workaround disassemble bug
         ops = self.r.cmdj("aoj %d @%d" % (len(insns), funcAddr))
-        cachedOps = map(lambda x: x['addr'], self.cache['ao'])
-        self.cache['ao'] += filter(lambda x: x['addr'] not in cachedOps, ops)
+        cachedOps = list(map(lambda x: x['addr'], self.cache['ao']))
+        self.cache['ao'] += list(filter(lambda x: x['addr'] not in cachedOps, ops))
         self.cache['afb'][funcAddr] = self.r.cmdj("afbj %d" % funcAddr)
         
     def _getOpcode(self, addr):
-        op = filter(lambda x: x['addr'] == addr, self.cache['ao'])
+        op = list(filter(lambda x: x['addr'] == addr, self.cache['ao']))
         if len(op) > 0:
             return op[0]
         op = self.r.cmdj("aoj 1 @%d" % addr)[0]
@@ -144,7 +144,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         return op
         
     def _getInsn(self, addr):
-        insn = filter(lambda x: x['offset'] == addr, self.cache['pd'])
+        insn = list(filter(lambda x: x['offset'] == addr, self.cache['pd']))
         if len(insn) > 0:
             return insn[0]
         insn = self.r.cmdj("pdj 1 @%d" % addr)[0]
@@ -232,7 +232,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
     def getBlockEndInsnAddr(self, addr, flowchart):
         try:
             bbs = self._getBasicBlocks(addr)
-            bb = filter(lambda x: x['addr'] <= addr and (x['addr'] + x['size']) > addr, bbs)[0]
+            bb = list(filter(lambda x: x['addr'] <= addr and (x['addr'] + x['size']) > addr, bbs))[0]
             addr = bb['addr']
             while addr < bb['addr'] + bb['size']:
                 insn = self._getOpcode(addr)
@@ -247,9 +247,9 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
     def getMinimumAddr(self):    
         # we don't want to consider PAGEZERO
         if self.filetype == "MACHO":
-            return sorted(filter(lambda y: y > 0, map(lambda x: x['vaddr'], self.cache['segments'])))[0]
+            return sorted(list(filter(lambda y: y > 0, list(map(lambda x: x['vaddr'], self.cache['segments'])))))[0]
         else:
-            return sorted(map(lambda x: x['vaddr'], self.cache['segments']))[0]
+            return sorted(list(map(lambda x: x['vaddr'], self.cache['segments'])))[0]
 
     def getMaximumAddr(self):
         maxAddr = 0
@@ -299,23 +299,23 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
         try:
             if smallest:
-                return min(filter(flt, self.cache['segments']), key = lambda x: x['vsize'])['name']
+                return min(list(filter(flt, self.cache['segments'])), key = lambda x: x['vsize'])['name']
             else:
-                return max(filter(flt, self.cache['segments']), key = lambda x: x['vsize'])['name']
+                return max(list(filter(flt, self.cache['segments'])), key = lambda x: x['vsize'])['name']
         except:
             return ""
 
     def getSegmentStart(self, addr):
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
         try:
-            return filter(flt, self.cache['segments'])[0]['vaddr']
+            return list(filter(flt, self.cache['segments']))[0]['vaddr']
         except:
             return -1
 
     def getSegmentEnd(self, addr):
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
         try:
-            seg = filter(flt, self.cache['segments'])[0]
+            seg = list(filter(flt, self.cache['segments']))[0]
             return seg['vaddr'] + seg['vsize']
         except:
             return -1
@@ -329,12 +329,12 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         return self.getSegmentSize(addr)
 
     def getSegments(self):
-        return map(lambda x: x['vaddr'], self.cache['segments'])
+        return list(map(lambda x: x['vaddr'], self.cache['segments']))
             
     # if any of the section APIs fail, the address may still be a part of a segment
     def getSectionName(self, addr, smallest=True):
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
-        sections = filter(flt, self.cache['sections'])
+        sections = list(filter(flt, self.cache['sections']))
         if len(sections) > 0:
             if smallest:
                 return min(sections, key = lambda x: x['vsize'])['name']
@@ -346,7 +346,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     def getSectionStart(self, addr):
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
-        sections = filter(flt, self.cache['sections'])
+        sections = list(filter(flt, self.cache['sections']))
         if len(sections) > 0:
             return sections[0]['vaddr']
         else:
@@ -354,7 +354,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     def getSectionEnd(self, addr):
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
-        sections = filter(flt, self.cache['sections'])
+        sections = list(filter(flt, self.cache['sections']))
         if len(sections) > 0:
             return sections[0]['vaddr'] + sections[0]['size']
         else:
@@ -362,14 +362,14 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     def getSectionSize(self, addr):
         flt = lambda x: x['vaddr'] <= addr and (x['vaddr'] + x['vsize']) > addr
-        sections = filter(flt, self.cache['sections'])
+        sections = list(filter(flt, self.cache['sections']))
         if len(sections) > 0:
             return sections[0]['size']
         else:
             return self.getSegmentSize(addr)
 
     def getSections(self):
-        return map(lambda x: x['vaddr'], self.cache['sections'])
+        return list(map(lambda x: x['vaddr'], self.cache['sections']))
 
     # gets disassembled instruction with names and comments as a string
     def getDisasmLine(self, addr):
@@ -384,22 +384,22 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     def getName(self, addr):
         try:
-            ret = filter(lambda x: x['offset'] == addr and 
+            ret = list(filter(lambda x: x['offset'] == addr and 
                                    x['name'][:4] != "fcn." and 
                                    re.match(r"entry[\d]+$", x['name']) == None, 
-                                   self.cache['fn']['symbols'])[0]['name']
+                                   self.cache['fn']['symbols']))[0]['name']
         except:
             try:
-                ret = filter(lambda x: x['offset'] == addr and 
+                ret = list(filter(lambda x: x['offset'] == addr and 
                                        x['name'][:4] != "fcn." and 
                                        re.match(r"entry[\d]+$", x['name']) == None, 
-                                       self.cache['fn']['imports'])[0]['name']
+                                       self.cache['fn']['imports']))[0]['name']
             except:
                 try:
-                    ret = filter(lambda x: x['offset'] == addr and 
+                    ret = list(filter(lambda x: x['offset'] == addr and 
                                            x['name'][:4] != "fcn." and 
                                            re.match(r"entry[\d]+$", x['name']) == None, 
-                                           self.cache['fn']['all'])[0]['name']
+                                           self.cache['fn']['all']))[0]['name']
                 except:
                     try:
                         ret = filter(lambda x: x['offset'] == addr and 
@@ -411,17 +411,19 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
 
     def getNameAddr(self, name):
         try:
-            return filter(lambda x: x['name'].replace("\n", "") == name, self.cache['fn']['all'])[0]['offset']
+            return list(filter(lambda x: x['name'].replace("\n", "") == name, self.cache['fn']['all']))[0]['offset']
         except:
             try:
-                return filter(lambda x: self.normalizeFuncName(x['name'].replace("\n", ""))
-                              == self.normalizeFuncName(name), self.cache['fn']['all'])[0]['offset']
+                return list(filter(lambda x: self.normalizeFuncName(x['name'].replace("\n", ""))
+                              == self.normalizeFuncName(name), self.cache['fn']['all']))[0]['offset']
             except:
                 # if it's a hexadecimal number such as returned from getOpnd, convert it to an integer
                 if name[:2] == "0x":
                     return int(name, 16)
                 else:
+                    logging.debug("error in getNameAddr")
                     return None 
+        
 
     def _getOpndDict(self, addr, opndNum):
         opndCnt = len(self._getOpcode(addr)['opex']['operands'])
@@ -487,7 +489,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
         return 0    
 
     def getXrefsTo(self, addr):
-        return map(lambda x: x['from'], filter(lambda y: y['opcode'] != "invalid", self.r.cmdj("axtj %d" % addr)))
+        return list(map(lambda x: x['from'], list(filter(lambda y: y['opcode'] != "invalid", self.r.cmdj("axtj %d" % addr)))))
 
     def getArch(self):
         return self.arch
@@ -509,7 +511,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
     def skipJumpTable(self, addr):
         # finds next block after the immediate next block which has the jump table in it
         try:
-            return filter(lambda x: x['addr'] > addr + 4, self._getBasicBlocks(addr))[0]['addr']
+            return list(filter(lambda x: x['addr'] > addr + 4, self._getBasicBlocks(addr)))[0]['addr']
         except:
             return addr
 

@@ -44,7 +44,7 @@ def instructionHook(uc, address, size, userData):
                 del(userData["imp"])
 
     except Exception as err:
-        print "Error in instructionHook: %s" % str(err)
+        print("Error in instructionHook: %s" % str(err))
         eh.stopEmulation(userData)
 
 
@@ -60,7 +60,7 @@ def callHook(address, argv, funcName, userData):
             eh.uc.reg_write(eh.regs["ret"], 1)
 
     except Exception as err:
-        print "Error in callHook: %s" % str(err)
+        print("Error in callHook: %s" % str(err))
         eh.stopEmulation(userData)
 
 
@@ -76,4 +76,4 @@ if __name__ == '__main__':
             eVa = None
         mu = eh.emulateRange(sVa, eVa, instructionHook=instructionHook, callHook=callHook)
     else:
-        print "Error: supplied addresses not within IDB address range"
+        print("Error: supplied addresses not within IDB address range")
