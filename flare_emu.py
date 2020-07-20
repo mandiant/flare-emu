@@ -1586,17 +1586,17 @@ class EmuHelper():
         logging.debug("interrupt #%d received @%s" % ((intno), self.hexString(userData["currAddr"])))
         if self.arch == unicorn.UC_ARCH_X86:
             self.writeEmuMem(userData["currAddr"], X86NOP *
-                         userData["currAddrSize"])
+                         int(userData["currAddrSize"]))
         elif self.arch == unicorn.UC_ARCH_ARM:
             if self.mode == unicorn.UC_MODE_THUMB:
                 self.writeEmuMem(userData["currAddr"],
-                             ARMTHUMBNOP * (userData["currAddrSize"] / 2))
+                             ARMTHUMBNOP * int((userData["currAddrSize"] / 2)))
             else:
                 self.writeEmuMem(
-                    userData["currAddr"], ARMNOP * (userData["currAddrSize"] / 4))
+                    userData["currAddr"], ARMNOP * int((userData["currAddrSize"] / 4)))
         elif self.arch == unicorn.UC_ARCH_ARM64:
             self.writeEmuMem(
-                userData["currAddr"], ARM64NOP * (userData["currAddrSize"] / 4))
+                userData["currAddr"], ARM64NOP * int((userData["currAddrSize"] / 4)))
         self.enteredBlock = False
         return True
 
