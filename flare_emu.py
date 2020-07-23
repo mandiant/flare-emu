@@ -1514,6 +1514,7 @@ class EmuHelper():
     def getArgv(self):
         if self.arch == unicorn.UC_ARCH_X86:
             if self.mode == unicorn.UC_MODE_64:
+                sp = self.getRegVal("rsp")
                 if self.filetype == "MACHO" or self.filetype == "ELF":
                     argv = [
                         self.getRegVal("rdi"),
@@ -1521,13 +1522,19 @@ class EmuHelper():
                         self.getRegVal("rdx"),
                         self.getRegVal("rcx"),
                         self.getRegVal("r8"),
-                        self.getRegVal("r9")]
+                        self.getRegVal("r9"),
+                        struct.unpack("<Q", self.uc.mem_read(sp, 8))[0],
+                        struct.unpack("<Q", self.uc.mem_read(sp + 8, 8))[0]]
                 else:
                     argv = [
                         self.getRegVal("rcx"),
                         self.getRegVal("rdx"),
                         self.getRegVal("r8"),
-                        self.getRegVal("r9")]
+                        self.getRegVal("r9"),
+                        struct.unpack("<Q", self.uc.mem_read(sp + 32, 8))[0],
+                        struct.unpack("<Q", self.uc.mem_read(sp + 40, 8))[0],
+                        struct.unpack("<Q", self.uc.mem_read(sp + 48, 8))[0],
+                        struct.unpack("<Q", self.uc.mem_read(sp + 56, 8))[0]]
             else:
                 sp = self.getRegVal("esp")
                 argv = [
@@ -1536,14 +1543,20 @@ class EmuHelper():
                     struct.unpack("<I", self.uc.mem_read(sp + 8, 4))[0],
                     struct.unpack("<I", self.uc.mem_read(sp + 12, 4))[0],
                     struct.unpack("<I", self.uc.mem_read(sp + 16, 4))[0],
-                    struct.unpack("<I", self.uc.mem_read(sp + 20, 4))[0]
-                    ]
+                    struct.unpack("<I", self.uc.mem_read(sp + 20, 4))[0],
+                    struct.unpack("<I", self.uc.mem_read(sp + 24, 4))[0],
+                    struct.unpack("<I", self.uc.mem_read(sp + 28, 4))[0]]
         elif self.arch == unicorn.UC_ARCH_ARM:
+            sp = self.getRegVal("SP")
             argv = [
                 self.getRegVal("R0"),
                 self.getRegVal("R1"),
                 self.getRegVal("R2"),
-                self.getRegVal("R3")]
+                self.getRegVal("R3"),
+                struct.unpack("<I", self.uc.mem_read(sp, 4))[0],
+                struct.unpack("<I", self.uc.mem_read(sp + 4, 4))[0],
+                struct.unpack("<I", self.uc.mem_read(sp + 8, 4))[0],
+                struct.unpack("<I", self.uc.mem_read(sp + 12, 4))[0]]
         elif self.arch == unicorn.UC_ARCH_ARM64:
             argv = [
                 self.getRegVal("X0"),
