@@ -147,7 +147,7 @@ The following is an incomplete list of some of the useful utility functions prov
 
 * `getEmuPtr(address)` - Returns the pointer value located at the given address.
 
-* `writeEmuPtr(address)` - Writes the pointer value at the given address in the emulated memory.
+* `writeEmuPtr(address, value)` - Writes the pointer value at the given address in the emulated memory.
 
 * `loadBytes(bytes, address=None)` - Allocates memory in the emulator and writes the bytes to it.
 
