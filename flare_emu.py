@@ -679,7 +679,7 @@ class EmuHelper():
 
     def writeEmuMem(self, addr, data):
         if isinstance(data, str):
-            data = data.encode()
+            data = data.encode('latin1')
         elif isinstance(data, bytearray):
             data = bytes(data)
 
