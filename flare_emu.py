@@ -249,6 +249,7 @@ class EmuHelper():
         self.h_memhook = None
         self.h_inthook = None
         self.enteredBlock = False
+        self.hookData = {}
 
         if samplePath is not None:
             try:
@@ -344,6 +345,7 @@ class EmuHelper():
         if self.arch == unicorn.UC_ARCH_ARM:
             userData["changeThumbMode"] = True
         mu.emu_start(startAddr, userData["funcEnd"], count=count)
+        self.hookData = userData
         return mu
         
     # call emulateRange using selected instructions in IDA Pro as start/end addresses
@@ -479,6 +481,8 @@ class EmuHelper():
 
             cnt += 1
 
+        self.hookData = userData
+
     # target: iterates paths through a function
     # targetCallback: a callback that is called when target (function end)
     #     is hit, providing arguments and userData
@@ -576,6 +580,8 @@ class EmuHelper():
                 cnt2 += 1
             cnt += 1
 
+        self.hookData = userData
+
     # simply emulates to the end of whatever bytes are provided
     # these bytes are not loaded into IDB, only emulator memory
     # analysisHelper APIs are not available for use in hooks here
@@ -606,6 +612,7 @@ class EmuHelper():
         self.h_inthook = mu.hook_add(
             unicorn.UC_HOOK_INTR, self._hookInterrupt, userData)
         mu.emu_start(baseAddr, endAddr)
+        self.hookData = userData
         return mu
         
     # emulates from startAddr continually
@@ -667,10 +674,16 @@ class EmuHelper():
         if self.arch == unicorn.UC_ARCH_ARM:
             userData["changeThumbMode"] = True
         mu.emu_start(startAddr, self.analysisHelper.getMaximumAddr(), count=count)
+        self.hookData = userData
         return mu
 
     def writeEmuMem(self, addr, data):
-        self.uc.mem_write(addr, bytes(data))
+        if isinstance(data, str):
+            data = data.encode()
+        elif isinstance(data, bytearray):
+            data = bytes(data)
+
+        self.uc.mem_write(addr, data)
         
     def hexString(self, va):
         if va > 0xffffffff:
@@ -733,6 +746,12 @@ class EmuHelper():
                 regVal = (regVal & 0xFF00) >> 8
             elif len(regName) == 2 and regName[:-1] == "x":
                 regVal = regVal & 0xFFFF
+            elif regName[0] == "e":
+                regVal = regVal & 0xFFFFFFFF
+            elif regName[:-1] == "d":
+                regVal = regVal & 0xFFFFFFFF
+            elif regName[:-1] == "w":
+                regVal = regVal & 0xFFFF
         elif self.arch == unicorn.UC_ARCH_ARM64:
             if regName[0] == "W":
                 regVal = regVal & 0xFFFFFFFF
@@ -765,6 +784,9 @@ class EmuHelper():
         if self.h_inthook:
             self.uc.hook_del(self.h_inthook)
             self.h_inthook = None
+
+    def getHookData(self):
+        return self.hookData
 
     # for debugging purposes
     def getEmuState(self):
@@ -1014,6 +1036,10 @@ class EmuHelper():
                              "cx": unicorn.x86_const.UC_X86_REG_RCX, "dx": unicorn.x86_const.UC_X86_REG_RDX,
                              "di": unicorn.x86_const.UC_X86_REG_RDI, "si": unicorn.x86_const.UC_X86_REG_RSI,
                              "bp": unicorn.x86_const.UC_X86_REG_RBP, "sp": unicorn.x86_const.UC_X86_REG_RSP,
+                             "eax": unicorn.x86_const.UC_X86_REG_RAX, "ebx": unicorn.x86_const.UC_X86_REG_RBX,
+                             "ecx": unicorn.x86_const.UC_X86_REG_RCX, "edx": unicorn.x86_const.UC_X86_REG_RDX,
+                             "edi": unicorn.x86_const.UC_X86_REG_RDI, "esi": unicorn.x86_const.UC_X86_REG_RSI,
+                             "ebp": unicorn.x86_const.UC_X86_REG_RBP, "esp": unicorn.x86_const.UC_X86_REG_RSP,
                              "ip": unicorn.x86_const.UC_X86_REG_RIP, "pc": unicorn.x86_const.UC_X86_REG_RIP,
                              "rax": unicorn.x86_const.UC_X86_REG_RAX, "rbx": unicorn.x86_const.UC_X86_REG_RBX,
                              "rcx": unicorn.x86_const.UC_X86_REG_RCX, "rdx": unicorn.x86_const.UC_X86_REG_RDX,
@@ -1023,7 +1049,19 @@ class EmuHelper():
                              "r10": unicorn.x86_const.UC_X86_REG_R10, "r11": unicorn.x86_const.UC_X86_REG_R11,
                              "r12": unicorn.x86_const.UC_X86_REG_R12, "r13": unicorn.x86_const.UC_X86_REG_R13,
                              "r14": unicorn.x86_const.UC_X86_REG_R14, "r15": unicorn.x86_const.UC_X86_REG_R15,
-                             "ret": unicorn.x86_const.UC_X86_REG_RAX}
+                             "r8d": unicorn.x86_const.UC_X86_REG_R8, "r9d": unicorn.x86_const.UC_X86_REG_R9,
+                             "r10d": unicorn.x86_const.UC_X86_REG_R10, "r11d": unicorn.x86_const.UC_X86_REG_R11,
+                             "r12d": unicorn.x86_const.UC_X86_REG_R12, "r13d": unicorn.x86_const.UC_X86_REG_R13,
+                             "r14d": unicorn.x86_const.UC_X86_REG_R14, "r15d": unicorn.x86_const.UC_X86_REG_R15,
+                             "r8w": unicorn.x86_const.UC_X86_REG_R8, "r9w": unicorn.x86_const.UC_X86_REG_R9,
+                             "r10w": unicorn.x86_const.UC_X86_REG_R10, "r11w": unicorn.x86_const.UC_X86_REG_R11,
+                             "r12w": unicorn.x86_const.UC_X86_REG_R12, "r13w": unicorn.x86_const.UC_X86_REG_R13,
+                             "r14w": unicorn.x86_const.UC_X86_REG_R14, "r15w": unicorn.x86_const.UC_X86_REG_R15,
+                             "r8b": unicorn.x86_const.UC_X86_REG_R8, "r9b": unicorn.x86_const.UC_X86_REG_R9,
+                             "r10b": unicorn.x86_const.UC_X86_REG_R10, "r11b": unicorn.x86_const.UC_X86_REG_R11,
+                             "r12b": unicorn.x86_const.UC_X86_REG_R12, "r13b": unicorn.x86_const.UC_X86_REG_R13,
+                             "r14b": unicorn.x86_const.UC_X86_REG_R14, "r15b": unicorn.x86_const.UC_X86_REG_R15,
+                             "ret": unicorn.x86_const.UC_X86_REG_RAX, "rip": unicorn.x86_const.UC_X86_REG_RIP}
                 if self.filetype == "PE":
                     self.tilName = "mssdk_win7"
                     self.regs.update({"arg1": unicorn.x86_const.UC_X86_REG_RCX,
@@ -2056,37 +2094,39 @@ class EmuHelper():
             self.emulateBytes(ENABLE_VFP_CODE)
 
     # prepare thread context
-    def _prepEmuContext(self, registers, stack):
+    def _prepEmuContext(self, registers=None, stack=None):
         mu = self.uc
         for reg in self.regs:
             mu.reg_write(self.regs[reg], 0)
         mu.reg_write(self.regs["sp"], self.stack)
-        for reg in registers:
-            val = registers[reg]
-            if isinstance(val, str):
-                mem = self.allocEmuMem(len(val))
-                self.writeEmuMem(mem, val)
-                val = mem
-            elif isinstance(val, (int, long)):
-                pass
-            else:
-                logging.debug("incorrect type for %s" % reg)
-                return None
-            mu.reg_write(self.regs[reg], val)
-            registers[reg] = val
+        if registers:
+            for reg in registers:
+                val = registers[reg]
+                if isinstance(val, str) or isinstance(val, bytes) or isinstance(val, bytearray):
+                    mem = self.allocEmuMem(len(val))
+                    self.writeEmuMem(mem, val)
+                    val = mem
+                elif isinstance(val, (int, long)):
+                    pass
+                else:
+                    logging.debug("incorrect type for %s" % reg)
+                    return None
+                mu.reg_write(self.regs[reg], val)
+                registers[reg] = val
 
         # setup stack
-        for i in range(0, len(stack)):
-            if isinstance(stack[i], str):
-                mem = self.allocEmuMem(len(stack[i]))
-                self.writeEmuMem(mem, stack[i])
-                stack[i] = mem
-                val = mem
-            elif isinstance(stack[i], (int, long)):
-                val = stack[i]
-            else:
-                logging.debug("incorrect type for stack[%d]" % (i))
-                return None
+        if stack:
+            for i in range(0, len(stack)):
+                if isinstance(stack[i], str) or isinstance(stack[i], bytes) or isinstance(stack[i], bytearray):
+                    mem = self.allocEmuMem(len(stack[i]))
+                    self.writeEmuMem(mem, stack[i])
+                    stack[i] = mem
+                    val = mem
+                elif isinstance(stack[i], (int, long)):
+                    val = stack[i]
+                else:
+                    logging.debug("incorrect type for stack[%d]" % (i))
+                    return None
 
-            self.writeEmuMem(self.getRegVal("sp") + i *
-                         self.size_pointer, struct.pack(self.pack_fmt, val))
+                self.writeEmuMem(self.getRegVal("sp") + i *
+                             self.size_pointer, struct.pack(self.pack_fmt, val))
