@@ -232,8 +232,13 @@ class AnalysisHelper(object):
 
 
 class EmuHelper():
-    def __init__(self, verbose=0, emuHelper=None, samplePath=None):
+    def __init__(self, verbose=0, loglevel=logging.INFO, emuHelper=None, samplePath=None):
         self.verbose = verbose
+        self.logger = logging.getLogger(__name__)
+        if isinstance(loglevel, str):
+            loglevel = loglevel.upper()
+
+        logging.basicConfig(format='%(name)s:%(levelname)s:%(message)s', level=loglevel)
         self.stack = 0
         self.stackSize = 0x2000
         self.size_DWORD = 4
@@ -255,7 +260,7 @@ class EmuHelper():
             try:
                 import flare_emu_radare
             except Exception as e:
-                print("error importing flare_emu_radare: %s" % e)
+                self.logger.error("error importing flare_emu_radare: %s" % e)
                 return
                 
             # copy Radare2AnalysisHelper to skip reanalyzing binary and save time
@@ -269,7 +274,7 @@ class EmuHelper():
             try:
                 import flare_emu_ida
             except:
-                print("error importing flare_emu_ida: specify samplePath to use radare2 or run under IDA Pro 7+")
+                self.logger.error("error importing flare_emu_ida: specify samplePath to use radare2 or run under IDA Pro 7+")
                 return
             self.analysisHelper = flare_emu_ida.IdaProAnalysisHelper(self)
             self.analysisHelperFramework = "IDA Pro"
@@ -360,7 +365,7 @@ class EmuHelper():
             self.emulateRange(selection[1], selection[2], registers, stack, instructionHook, 
                               callHook, memAccessHook, hookData, skipCalls, hookApis, count=count)
         else:
-            print("emulateSelection is only available for IDA Pro")
+            self.logger.error("emulateSelection is only available for IDA Pro")
 
     # target: finds first path through function to target using depth first
     #     search for each address in list, if a single address is specified,
@@ -392,7 +397,7 @@ class EmuHelper():
 
         targetInfo = {}
         if type(target) in [int, long]:
-            logging.debug("iterate target function: %s" %
+            self.logger.debug("iterate target function: %s" %
                           self.hexString(target))
             xrefs = self.analysisHelper.getXrefsTo(target)
             for i, x in enumerate(xrefs):
@@ -403,20 +408,20 @@ class EmuHelper():
                 if self.analysisHelper.getMnem(x).upper() not in ["CALL", "JMP", "BL", "BLX", "B", "BLR"]:
                     continue
 
-                logging.debug("getting a path to %s, %d of %d" %
+                self.logger.debug("getting a path to %s, %d of %d" %
                               (self.hexString(x), i + 1, len(xrefs)))
                 flow, paths = self.getPath(x)
                 if flow is not None:
                     targetInfo[x] = (flow, paths)
         elif isinstance(target, list):
             for i, t in enumerate(target):
-                logging.debug("getting a path to %s, %d of %d" %
+                self.logger.debug("getting a path to %s, %d of %d" %
                               (self.hexString(t), i + 1, len(target)))
                 flow, paths = self.getPath(t)
                 if flow is not None:
                     targetInfo[t] = (flow, paths)
         if len(targetInfo) <= 0:
-            logging.debug("no targets to iterate")
+            self.logger.debug("no targets to iterate")
             return
 
         userData = {}
@@ -452,12 +457,12 @@ class EmuHelper():
             funcStart = flow[0][0]
             self.pathIdx = 0
             numTargets = len(userData["targetInfo"])
-            logging.debug("run #%d, %d targets remaining: %s (%d paths)" % (
+            self.logger.info("iterate run #%d, %d targets remaining: %s (%d paths)" % (
                 cnt, numTargets, self.hexString(targetVA), len(paths)))
             cnt2 = 1
             numPaths = len(paths)
             for path in paths:
-                logging.debug("emulating path #%d of %d from %s to %s via basic blocks: %s" % (
+                self.logger.debug("emulating path #%d of %d from %s to %s via basic blocks: %s" % (
                     cnt2, numPaths, self.hexString(funcStart), self.hexString(targetVA), repr(path)))
                 for reg in self.regs:
                     self.uc.reg_write(self.regs[reg], 0)
@@ -516,13 +521,13 @@ class EmuHelper():
 
         targetInfo = {}
         for i, t in enumerate(targets):
-            logging.debug("getting paths to %s, %d of %d targets" %
+            self.logger.debug("getting paths to %s, %d of %d targets" %
                           (self.hexString(t), i + 1, len(targets)))
             flow, paths = self.getPathsToTarget(t, maxPaths, maxNodes)
             if flow and paths:
                 targetInfo[t] = (flow, paths)
         if len(targetInfo) <= 0:
-            logging.debug("no targets to iterate")
+            self.logger.debug("iterateAllPaths: no targets to iterate for %s" % self.hexString(target))
             return
 
         userData = {}
@@ -555,12 +560,12 @@ class EmuHelper():
             funcStart = flow[0][0]
             self.pathIdx = 0
             numTargets = len(userData["targetInfo"])
-            logging.debug("run #%d, %d targets remaining: %s (%d paths)" % (
+            self.logger.info("run #%d, %d targets remaining: %s (%d paths)" % (
             cnt, numTargets, self.hexString(targetVA), len(paths)))
             cnt2 = 1
             numPaths = len(paths)
             for path in paths:
-                logging.debug("emulating path #%d of %d from %s to %s via basic blocks: %s" % (
+                self.logger.debug("emulating path #%d of %d from %s to %s via basic blocks: %s" % (
                     cnt2, numPaths, self.hexString(funcStart), self.hexString(targetVA), repr(path)))
                 for reg in self.regs:
                     self.uc.reg_write(self.regs[reg], 0)
@@ -678,10 +683,12 @@ class EmuHelper():
         return mu
 
     def writeEmuMem(self, addr, data):
-        if isinstance(data, str):
-            data = data.encode('latin1')
-        elif isinstance(data, bytearray):
+        if isinstance(data, bytearray):
             data = bytes(data)
+
+        if not isinstance(data, bytes):
+            self.logger.error("wrong type for writeEmuMem data, expects bytes or bytearray: %s" % type(data))
+            return
 
         self.uc.mem_write(addr, data)
         
@@ -766,7 +773,7 @@ class EmuHelper():
 
     def resetEmuHooks(self):
         if self.uc is None:
-            logging.debug(
+            self.logger.debug(
                 "resetEmuHooks: no hooks to reset, emulator has not been initialized yet")
             return
         if self.h_userhook:
@@ -915,26 +922,26 @@ class EmuHelper():
         start_bb = self.analysisHelper.getStartBB(targetVA, flowchart)
         if target_bb.id != 0:
             if self.verbose > 0:
-                logging.debug("exploring function with %d blocks" % len(flowchart))
+                self.logger.debug("exploring function with %d blocks" % len(flowchart))
             graph = self._explore(start_bb, target_bb)
             if graph is None:
-                logging.debug(
+                self.logger.debug(
                     "graph for target %s could not be traversed, skipping" % self.hexString(targetVA))
                 return None, None
 
             if self.verbose > 0:
-                logging.debug("graph for target:\n%s" % repr(graph))
+                self.logger.debug("graph for target:\n%s" % repr(graph))
                 
             path = [0]
             if not self._findPathFromGraph(path, graph, 0, target_bb.id):
-                logging.debug(
+                self.logger.debug(
                     "path for target %s could not be discovered, skipping" % self.hexString(targetVA))
                 return None, None
         else:
             path = [0]
 
         if self.verbose > 0:
-            logging.debug("code path to target: %s" % repr(path))
+            self.logger.debug("code path to target: %s" % repr(path))
 
         # create my own idaapi.FlowChart-like object to optimize calculating block end addrs
         flow = {}
@@ -950,29 +957,29 @@ class EmuHelper():
         start_bb = self.analysisHelper.getStartBB(targetVA, flowchart)
         if target_bb.id != 0:
             if self.verbose > 0:
-                logging.debug("exploring function with %d blocks" % len(flowchart))
+                self.logger.debug("exploring function with %d blocks" % len(flowchart))
             graph = self._explore(start_bb)
             if graph is None:
-                logging.debug(
+                self.logger.debug(
                     "graph for target %s could not be traversed, skipping" % self.hexString(targetVA))
                 return None, None
 
             if self.verbose > 0:
-                logging.debug("graph for target:\n%s" % repr(graph))
+                self.logger.debug("graph for target:\n%s" % repr(graph))
              
             path = [0]
             paths = []
             targets = [target_bb.id]
             self._findPathsFromGraph(paths, path, graph, 0, targets, maxPaths, 0 , maxNodes)
             if len(paths) == 0:
-                logging.debug(
+                self.logger.debug(
                     "path for target %s could not be discovered, skipping" % self.hexString(targetVA))
                 return None, None
         else:
             paths = [[0]]
 
         if self.verbose > 0:
-            logging.debug("code paths to target: %s" % repr(paths))
+            self.logger.debug("code paths to target: %s" % repr(paths))
 
         # create my own idaapi.FlowChart object so it can be pickled for debugging purposes
         flow = {}
@@ -988,28 +995,28 @@ class EmuHelper():
         start_bb = self.analysisHelper.getStartBB(fva, flowchart)
         if term_bbs_ids != [0]:
             if self.verbose > 0:
-                logging.debug("exploring function with %d blocks" % len(flowchart))
+                self.logger.debug("exploring function with %d blocks" % len(flowchart))
             graph = self._explore(start_bb)
             if graph is None:
-                logging.debug(
+                self.logger.debug(
                     "graph for target %s could not be traversed, skipping" % self.hexString(fva))
                 return None, None
 
             if self.verbose > 0:
-                logging.debug("graph for target:\n%s" % repr(graph))
+                self.logger.debug("graph for target:\n%s" % repr(graph))
 
             path = [0]
             paths = []
             self._findPathsFromGraph(paths, path, graph, 0, term_bbs_ids, maxPaths, 0, maxNodes)
             if len(paths) == 0:
-                logging.debug(
+                self.logger.debug(
                     "paths for target %s could not be discovered, skipping" % self.hexString(fva))
                 return None, None
         else:
             paths = [[0]]
 
         if self.verbose > 0:
-            logging.debug("code paths to target: %s" % repr(paths))
+            self.logger.debug("code paths to target: %s" % repr(paths))
 
         # create my own idaapi.FlowChart object so it can be pickled for debugging purposes
         flow = {}
@@ -1115,7 +1122,7 @@ class EmuHelper():
                              "ret": unicorn.x86_const.UC_X86_REG_EAX}
             
             else:
-                logging.debug(
+                self.logger.error(
                     "sample contains code for unsupported processor architecture")
                 return
         elif arch == "ARM":
@@ -1314,11 +1321,11 @@ class EmuHelper():
                 self.regs.update({"arg1": unicorn.arm_const.UC_ARM_REG_R0, "arg2": unicorn.arm_const.UC_ARM_REG_R1,
                                   "arg3": unicorn.arm_const.UC_ARM_REG_R2, "arg4": unicorn.arm_const.UC_ARM_REG_R3})
             else:
-                logging.debug(
+                self.logger.error(
                     "sample contains code for unsupported processor architecture")
                 return
         else:
-            logging.debug(
+            self.logger.error(
                 "sample contains code for unsupported processor architecture")
             return
 
@@ -1430,7 +1437,7 @@ class EmuHelper():
         
         # Initialize emulator
         mu = unicorn.Uc(self.arch, self.mode)
-        logging.debug("initialized emulator for %s with %s architecture in %s mode" % (
+        self.logger.info("initialized emulator for %s with %s architecture in %s mode" % (
             self.filetype, arch, mode))
         self.uc = mu
         if self.arch == unicorn.UC_ARCH_ARM or self.arch == unicorn.UC_ARCH_ARM64:
@@ -1446,13 +1453,13 @@ class EmuHelper():
             if hook in self.apiHooks:
                 self.apiHooks[apiName] = self.apiHooks[hook]
             else:
-                print("%s is not a currently defined API hook" % hook)
+                self.logger.error("%s is not a currently defined API hook" % hook)
                 return False
         elif isinstance(hook, types.FunctionType):
             self.apiHooks[apiName] = hook
             return True
         else:
-            print("unsupported hook type")
+            self.logger.error("unsupported hook type")
             return False
     
     # unmap all emulator memory
@@ -1465,7 +1472,7 @@ class EmuHelper():
         for region in self.uc.mem_regions():
             if region[0] != self.baseAddr:
                 self.uc.mem_unmap(region[0], region[1] - region[0] + 1)
-                logging.debug("unmapped %s to %s" % (
+                self.logger.debug("unmapped %s to %s" % (
                     self.hexString(region[0]), self.hexString(region[1])))
         self._buildStack()
 
@@ -1477,7 +1484,7 @@ class EmuHelper():
         self.baseAddr = baseAddr
         memsize = endAddr - baseAddr
         memsize = self.pageAlignUp(memsize) + PAGESIZE
-        logging.debug("base addr: %s end addr: %s memsize: %s" % (self.hexString(baseAddr), 
+        self.logger.debug("base addr: %s end addr: %s memsize: %s" % (self.hexString(baseAddr), 
                       self.hexString(endAddr), self.hexString(memsize)))
         # map all binary segments as one memory region for easier management
         self.uc.mem_map(baseAddr & self.pageMask, memsize)
@@ -1489,8 +1496,8 @@ class EmuHelper():
             endVA = self.analysisHelper.getSegmentEnd(segVA)
             segSizeTotal = endVA - segVA
             segSize = self.analysisHelper.getSegmentDefinedSize(segVA)
-            logging.debug("bytes in seg: %s" % self.hexString(segSize))
-            logging.debug("mapping segment %s: %s - %s" %
+            self.logger.debug("bytes in seg: %s" % self.hexString(segSize))
+            self.logger.debug("mapping segment %s: %s - %s" %
                           (segName, self.hexString(segVA), self.hexString(endVA)))
             if segSize > 0:
                 segBytes = self.analysisHelper.getBytes(segVA, segSize)
@@ -1542,7 +1549,7 @@ class EmuHelper():
             if isValid is False:
                 baseAddr = self._findUnusedMemRegion()
                 addr = baseAddr + offs
-        logging.debug("mapping %s bytes @%s" %
+        self.logger.debug("mapping %s bytes @%s" %
                       (self.hexString(allocSize), self.hexString(baseAddr)))
         self.uc.mem_map(baseAddr, allocSize)
         return addr
@@ -1554,7 +1561,7 @@ class EmuHelper():
             mem = self.uc.mem_read(srcAddr, size)
             self.writeEmuMem(dstAddr, mem)
         except Exception as e:
-            logging.debug("exception in copyEmuMem @%s: %s" % (self.hexString(userData["currAddr"]), str(e)))
+            self.logger.error("exception in copyEmuMem @%s: %s" % (self.hexString(userData["currAddr"]), str(e)))
         
     def getCallTargetName(self, address):
         if self.analysisHelper.getOpndType(address, 0) == self.analysisHelper.o_reg:
@@ -1628,21 +1635,21 @@ class EmuHelper():
  
     def _checkMemSize(self, size, userData):
         if size > MAX_ALLOC_SIZE:
-            logging.debug("allocation size (%s) truncated @%s" % 
+            self.logger.debug("allocation size (%s) truncated @%s" % 
                           (self.hexString(size), self.hexString(userData["currAddr"])))
             size = MAX_ALLOC_SIZE
         return size
         
     # maps null memory as requested during emulation
     def _hookMemInvalid(self, uc, access, address, size, value, userData):
-        logging.debug("invalid memory operation for %s @%s" %
+        self.logger.debug("invalid memory operation for %s @%s" %
                       (self.hexString(address), self.hexString(userData['currAddr'])))
         try:
             uc.mem_map(address & self.pageMask, PAGESIZE)
             self.writeEmuMem(address & self.pageMask, b"\x00" * PAGESIZE)
-            logging.debug("allocated memory to %s" % self.hexString(address))
+            self.logger.debug("allocated memory to %s" % self.hexString(address))
         except Exception:
-            logging.debug("error writing to %s, changing IP from %s to %s" % (self.hexString(address), self.hexString(
+            self.logger.debug("error writing to %s, changing IP from %s to %s" % (self.hexString(address), self.hexString(
                 userData['currAddr']), self.hexString(userData['currAddr'] + userData['currAddrSize'])))
             userData['EmuHelper'].skipInstruction(userData)
         return True
@@ -1650,7 +1657,7 @@ class EmuHelper():
     # cannot seem to move IP forward from this hook for some reason..
     # patches current instruction with NOPs
     def _hookInterrupt(self, uc, intno, userData):
-        logging.debug("interrupt #%d received @%s" % ((intno), self.hexString(userData["currAddr"])))
+        self.logger.debug("interrupt #%d received @%s" % ((intno), self.hexString(userData["currAddr"])))
         if self.arch == unicorn.UC_ARCH_X86:
             self.writeEmuMem(userData["currAddr"], X86NOP *
                          int(userData["currAddrSize"]))
@@ -1688,7 +1695,7 @@ class EmuHelper():
         try:
             self.apiHooks[funcName](self, address, argv, funcName, userData)
         except Exception as e:
-            logging.debug("error handling API hook: %s @%s" % (e, self.hexString(address)))
+            self.logger.error("error handling API hook: %s @%s" % (e, self.hexString(address)))
             
         self.skipInstruction(userData)
         return True
@@ -1711,9 +1718,9 @@ class EmuHelper():
             
             if self.verbose > 0:
                 if self.verbose > 1:
-                    logging.debug(self.getEmuState())
+                    self.logger.debug(self.getEmuState())
                 dis = self.analysisHelper.getDisasmLine(address)
-                logging.debug("%s: %s" % (self.hexString(address), dis))
+                self.logger.debug("%s: %s" % (self.hexString(address), dis))
 
             # stop emulation if specified endAddr is reached
             if userData.get("endAddr", None) is not None:
@@ -1725,7 +1732,7 @@ class EmuHelper():
                 return
             # stop annoying run ons if we end up somewhere we dont belong
             if self.uc.mem_read(address, size) == b"\x00" * size:
-                logging.debug("pc ended up in null memory @%s" %
+                self.logger.debug("pc ended up in null memory @%s" %
                               self.hexString(address))
                 self.stopEmulation(userData)
                 return
@@ -1787,8 +1794,7 @@ class EmuHelper():
                   self.skipInstruction(userData)
 
         except Exception as err:
-            logging.debug("exception in emulateRangeCodehook @%s: %s" % (self.hexString(address), str(err)))
-            print("exception in emulateRangeCodehook @%s: %s" % (self.hexString(address), str(err)))
+            self.logger.error("exception in emulateRangeCodehook @%s: %s" % (self.hexString(address), str(err)))
             self.stopEmulation(userData)
 
     # instruction hook used by emulateBytes function
@@ -1806,13 +1812,12 @@ class EmuHelper():
             # stop annoying run ons if we end up somewhere we dont belong
             if self.uc.mem_read(address, 0x10) == b"\x00" * 0x10:
                 self.stopEmulation(userData)
-                logging.debug("pc ended up in null memory @%s" %
+                self.logger.debug("pc ended up in null memory @%s" %
                               self.hexString(address))
                 return
 
         except Exception as err:
-            logging.debug("exception in emulateBytesCodehook @%s: %s" % (self.hexString(address), str(err)))
-            print("exception in emulateBytesCodehook @%s: %s" % (self.hexString(address), str(err)))
+            self.logger.error("exception in emulateBytesCodehook @%s: %s" % (self.hexString(address), str(err)))
             self.stopEmulation(userData)
 
     # this instruction hook is used by the iterate feature, forces execution down a specified path
@@ -1827,9 +1832,9 @@ class EmuHelper():
                 return
             if self.verbose > 0:
                 if self.verbose > 1:
-                    logging.debug(self.getEmuState())
+                    self.logger.debug(self.getEmuState())
                 dis = self.analysisHelper.getDisasmLine(address)
-                logging.debug("%s: %s" % (self.hexString(address), dis))
+                self.logger.debug("%s: %s" % (self.hexString(address), dis))
             if self.arch == unicorn.UC_ARCH_ARM:
                 # since there are lots of bad branches during emulation and we are forcing it anyways
                 if self.analysisHelper.getMnem(address)[:3].upper() in ["TBB", "TBH"]:
@@ -1847,7 +1852,7 @@ class EmuHelper():
             bbStart = flow[paths[self.pathIdx][self.blockIdx]][0]
             if address == bbStart and self.enteredBlock is True:
                 if self.blockIdx < len(paths[self.pathIdx]) - 1:
-                    logging.debug("loop re-entering block #%d (%s -> %s), forcing PC to %s" %
+                    self.logger.debug("loop re-entering block #%d (%s -> %s), forcing PC to %s" %
                                   (self.blockIdx, self.hexString(bbStart), self.hexString(bbEnd),
                                    self.hexString(flow[paths[self.pathIdx][self.blockIdx + 1]][0])))
                     # force PC to follow paths
@@ -1858,7 +1863,7 @@ class EmuHelper():
                         userData["changeThumbMode"] = True
                     return
                 else:
-                    logging.debug(
+                    self.logger.debug(
                         "loop re-entering block #%d (%s -> %s), but no more blocks! bailing out of this function.." %
                         (self.blockIdx, self.hexString(bbStart), self.hexString(bbEnd)))
                     self.stopEmulation(userData)
@@ -1867,11 +1872,11 @@ class EmuHelper():
                 # check if we skipped over our target (our next block index is out of range), this can happen in ARM
                 # with conditional instructions
                 if self.blockIdx + 1 >= len(paths[self.pathIdx]):
-                    logging.debug(
+                    self.logger.debug(
                         "we missed our target! bailing out of this function..")
                     self.stopEmulation(userData)
                     return
-                logging.debug("%s is outside of block #%d (%s -> %s), forcing PC to %s" %
+                self.logger.debug("%s is outside of block #%d (%s -> %s), forcing PC to %s" %
                               (self.hexString(address),
                                self.blockIdx, self.hexString(bbStart),
                                self.hexString(bbEnd), 
@@ -1890,7 +1895,7 @@ class EmuHelper():
             if self.analysisHelper.getMnem(address) == "":
                 if self.analysisHelper.getMnem(address + size) == "":
                     if self.analysisHelper.getMnem(address + size * 2) == "":
-                        logging.debug(
+                        self.logger.debug(
                             "invalid instruction encountered @%s, bailing.." % self.hexString(address))
                         self.stopEmulation(userData)
                     return
@@ -1898,20 +1903,20 @@ class EmuHelper():
 
             # stop annoying run ons if we end up somewhere we dont belong
             if self.uc.mem_read(address, 0x10) == b"\x00" * 0x10:
-                logging.debug("pc ended up in null memory @%s" %
+                self.logger.debug("pc ended up in null memory @%s" %
                               self.hexString(address))
                 self.stopEmulation(userData)
                 return
             
             # this is our stop, this is where we trigger user-defined callback with our info
             if address == userData["targetVA"]:
-                logging.debug("target %s hit" %
+                self.logger.debug("target %s hit" %
                               self.hexString(userData["targetVA"]))
                 self._targetHit(address, userData)
                 self.stopEmulation(userData)
             elif address in userData["targetInfo"]:
                 # this address is another target in the dict, process it and continue onward
-                logging.debug("target %s found on the way to %s" % (
+                self.logger.info("target %s found on the way to %s, processing" % (
                     self.hexString(address), self.hexString(userData["targetVA"])))
                 self._targetHit(address, userData)
 
@@ -1949,8 +1954,7 @@ class EmuHelper():
                 return
 
         except Exception as e:
-            logging.debug("exception in _guidedHook @%s: %s" % (self.hexString(address), e))
-            print("exception in _guidedHook @%s: %s" % (self.hexString(address), e))
+            self.logger.error("exception in _guidedHook @%s: %s" % (self.hexString(address), e))
             self.stopEmulation(userData)
 
 
@@ -1969,8 +1973,7 @@ class EmuHelper():
             argv = self.getArgv()
             userData["targetCallback"](self, address, argv, userData)
         except Exception as e:
-            logging.debug("exception in targetCallback function @%s: %s" % (self.hexString(address), str(e)))
-            print("exception in targetCallback function @%s: %s" % (self.hexString(address), str(e)))
+            self.logger.error("exception in targetCallback function @%s: %s" % (self.hexString(address), str(e)))
         userData["visitedTargets"].append(address)
 
     # this only works for IDA Pro since radare2 will always disassemble
@@ -1987,7 +1990,7 @@ class EmuHelper():
                     self.analysisHelper.getOpndType(userData["currAddr"], 0) == self.analysisHelper.o_reg):
                 if (self.analysisHelper.getMnem
                    (self.getRegVal(self.analysisHelper.getOperand(userData["currAddr"], 0))) == ""):
-                    logging.debug("bad branch detected @%s" % self.hexString(userData["currAddr"]))
+                    self.logger.debug("bad branch detected @%s" % self.hexString(userData["currAddr"]))
                     return True
         return False
     
@@ -2066,13 +2069,13 @@ class EmuHelper():
     def _cloneEmuMem(self, eh):
         self.resetEmulatorMemory()
         self.baseAddr = eh.baseAddr
-        logging.debug("cloning provided emu memory")
+        self.logger.debug("cloning provided emu memory")
         for region in eh.uc.mem_regions():
             size = region[1] - region[0] + 1
-            logging.debug("mapping %s bytes @%s" %
+            self.logger.debug("mapping %s bytes @%s" %
                       (self.hexString(size), self.hexString(region[0])))
             self.uc.mem_map(region[0], size)
-            logging.debug("copying region")
+            self.logger.debug("copying region")
             self.writeEmuMem(region[0], eh.getEmuBytes(region[0], size))
         self._buildStack()
         
@@ -2125,7 +2128,7 @@ class EmuHelper():
                 elif isinstance(val, (int, long)):
                     pass
                 else:
-                    logging.debug("incorrect type for %s" % reg)
+                    self.logger.error("incorrect type for %s" % reg)
                     return None
                 mu.reg_write(self.regs[reg], val)
                 registers[reg] = val
@@ -2141,7 +2144,7 @@ class EmuHelper():
                 elif isinstance(stack[i], (int, long)):
                     val = stack[i]
                 else:
-                    logging.debug("incorrect type for stack[%d]" % (i))
+                    self.logger.error("incorrect type for stack[%d]" % (i))
                     return None
 
                 self.writeEmuMem(self.getRegVal("sp") + i *
