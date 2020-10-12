@@ -1526,33 +1526,33 @@ class EmuHelper():
         return None
         
     # allocate emulator memory, attempts to honor specified address, otherwise begins allocations 
-    # at the next page
-    # aligned address above the highest, returns address, rebased if necessary
+    # at an available page
+    # aligned address, returns address, rebased if necessary
     def allocEmuMem(self, size, addr=None):
         allocSize = self.pageAlignUp(size)
+        fail = False
         if addr is None or addr == 0:
-            baseAddr = addr = self._findUnusedMemRegion()
+            baseAddr = addr = self._findUnusedMemRegion(size)
+            if baseAddr is None:
+                
+                fail = True
         else:
-            isValid = True
             baseAddr = self.pageAlign(addr)
             offs = addr - baseAddr
-            for region in self.uc.mem_regions():
-                # if start or end of region falls in range of a previous region
-                if ((baseAddr >= region[0] and baseAddr < region[1]) or
-                        (baseAddr + allocSize >= region[0] and baseAddr + allocSize < region[1])):
-                    isValid = False
-                    break
-                # if region completely envelopes a previous region
-                if baseAddr < region[0] and baseAddr + allocSize > region[1]:
-                    isValid = False
-                    break
-            if isValid is False:
-                baseAddr = self._findUnusedMemRegion()
-                addr = baseAddr + offs
-        self.logger.debug("mapping %s bytes @%s" %
-                      (self.hexString(allocSize), self.hexString(baseAddr)))
-        self.uc.mem_map(baseAddr, allocSize)
-        return addr
+            if self._regionOverlapsWithExistingRegion(baseAddr, allocSize):
+                baseAddr = self._findUnusedMemRegion(size)
+                if baseAddr is None:
+                    fail = True
+                else:
+                    addr = baseAddr + offs
+
+        if not fail:
+            self.logger.debug("mapping %s bytes @%s" %
+                          (self.hexString(allocSize), self.hexString(baseAddr)))
+            self.uc.mem_map(baseAddr, allocSize)
+            return addr
+
+        return None
      
     
     def copyEmuMem(self, dstAddr, srcAddr, size, userData):
@@ -2052,19 +2052,49 @@ class EmuHelper():
                         return graph
                     
         return graph
-    
-    def _findUnusedMemRegion(self):
-        # start at 0x10000 to avoid collision with null mem references during emulation
-        highest = 0x10000
-        for region in self.uc.mem_regions():
-            if region[1] > highest:
-                highest = region[1]
+
+    def _regionInSegment(self, addr, size):
+        segs = []
         for segVA in self.analysisHelper.getSegments():
             endVA = self.analysisHelper.getSegmentEnd(segVA)
-            if endVA > highest:
-                highest = endVA
-        highest += PAGESIZE
-        return self.pageAlignUp(highest)
+            segs.append((segVA, endVA))
+
+        for seg in segs:
+            if ((seg[0] <= addr and seg[1] > addr) or # starts in segment
+                (seg[0] <= addr + size and seg[1] > addr + size) or # ends in segment
+                (seg[0] > addr and seg[1] < addr + size) # swallows segment
+                ):
+                return True
+
+        return False
+
+    def _regionOverlapsWithExistingRegion(self, addr, size):
+        for region in self.uc.mem_regions():
+            # if start or end of region falls in range of a previous region
+            if ((addr >= region[0] and addr < region[1]) or
+                    (addr + size >= region[0] and addr + size < region[1])):
+                return True
+            # if region completely envelopes a previous region
+            if addr < region[0] and addr + size > region[1]:
+                return True
+
+        return False
+    
+    def _findUnusedMemRegion(self, size):
+        candidate = 0x10000
+        maxAddr = self.pageMask + 0x1000
+        size = self.pageAlignUp(size)
+        while candidate < maxAddr:
+            if not self._regionOverlapsWithExistingRegion(candidate, size) and not self._regionInSegment(candidate, size):
+                break
+
+            candidate += 0x1000
+
+        if candidate < maxAddr:
+            return candidate
+
+        self.logger.error("not enough memory for allocation!")
+        return None
     
     def _cloneEmuMem(self, eh):
         self.resetEmulatorMemory()
