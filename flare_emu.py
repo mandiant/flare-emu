@@ -235,6 +235,7 @@ class EmuHelper():
     def __init__(self, verbose=0, loglevel=logging.INFO, emuHelper=None, samplePath=None):
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(loglevel)
         if isinstance(loglevel, str):
             loglevel = loglevel.upper()
 
@@ -450,7 +451,17 @@ class EmuHelper():
         # read targets from dict to go from higher to lower addresses
         # this is done to optimize loop by allowing hook to check for and remove other targets visited en route to
         # current target
+        old_target_info_len = len(userData["targetInfo"])
         while len(userData["targetInfo"]) > 0:
+            # Fix potential edge-case for infinite loop
+            # Currently an unknown edge-case seems to exist where the target VA is never reached
+            #  and the length never decreases.
+            # Noticed in when using a custom script with:
+            #  https://www.virustotal.com/gui/file/d591f43fc34163c9adbcc98f51bb2771223cc78081e98839ca419e6efd711820/detection
+            # This modification checks that the target VAs are being deleted
+            if cnt > 1 and len(userData["targetInfo"]) == old_target_info_len:
+                break
+
             userData["targetVA"] = targetVA = sorted(
                 userData["targetInfo"].keys(), reverse=True)[0]
             flow, paths = userData["targetInfo"][targetVA]
