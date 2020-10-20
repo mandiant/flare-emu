@@ -453,12 +453,9 @@ class EmuHelper():
         # current target
         old_target_info_len = len(userData["targetInfo"])
         while len(userData["targetInfo"]) > 0:
-            # Fix potential edge-case for infinite loop
-            # Currently an unknown edge-case seems to exist where the target VA is never reached
-            #  and the length never decreases.
-            # Noticed in when using a custom script with:
-            #  https://www.virustotal.com/gui/file/d591f43fc34163c9adbcc98f51bb2771223cc78081e98839ca419e6efd711820/detection
-            # This modification checks that the target VAs are being deleted
+            # Fixes potential edge-case for infinite loop where the target VAs are never reached
+            #  and the length never decreases. This modification verifies that the target VAs
+            #  are being deleted; otherwise, breaks out of the while loop.
             if cnt > 1 and len(userData["targetInfo"]) == old_target_info_len:
                 break
 
