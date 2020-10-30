@@ -232,13 +232,12 @@ class AnalysisHelper(object):
 
 
 class EmuHelper():
-    def __init__(self, verbose=0, loglevel=logging.INFO, emuHelper=None, samplePath=None):
+    def __init__(self, verbose=0, emuHelper=None, samplePath=None):
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
         if isinstance(loglevel, str):
             loglevel = loglevel.upper()
 
-        logging.basicConfig(format='%(name)s:%(levelname)s:%(message)s', level=loglevel)
         self.stack = 0
         self.stackSize = 0x2000
         self.size_DWORD = 4
@@ -457,7 +456,7 @@ class EmuHelper():
             funcStart = flow[0][0]
             self.pathIdx = 0
             numTargets = len(userData["targetInfo"])
-            self.logger.info("iterate run #%d, %d targets remaining: %s (%d paths)" % (
+            self.logger.debug("iterate run #%d, %d targets remaining: %s (%d paths)" % (
                 cnt, numTargets, self.hexString(targetVA), len(paths)))
             cnt2 = 1
             numPaths = len(paths)
@@ -560,7 +559,7 @@ class EmuHelper():
             funcStart = flow[0][0]
             self.pathIdx = 0
             numTargets = len(userData["targetInfo"])
-            self.logger.info("run #%d, %d targets remaining: %s (%d paths)" % (
+            self.logger.debug("run #%d, %d targets remaining: %s (%d paths)" % (
             cnt, numTargets, self.hexString(targetVA), len(paths)))
             cnt2 = 1
             numPaths = len(paths)
@@ -1916,7 +1915,7 @@ class EmuHelper():
                 self.stopEmulation(userData)
             elif address in userData["targetInfo"]:
                 # this address is another target in the dict, process it and continue onward
-                self.logger.info("target %s found on the way to %s, processing" % (
+                self.logger.debug("target %s found on the way to %s, processing" % (
                     self.hexString(address), self.hexString(userData["targetVA"])))
                 self._targetHit(address, userData)
 

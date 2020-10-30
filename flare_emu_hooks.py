@@ -87,16 +87,16 @@ def _memcpyHook(eh, address, argv, funcName, userData):
     srcRegion = eh.getEmuMemRegion(argv[1])
     dstRegion = eh.getEmuMemRegion(argv[0])
     if dstRegion is None:
-        logging.debug("dest memory does not exist for memcpy @%s" % eh.hexString(address))
+        eh.logger.debug("dest memory does not exist for memcpy @%s" % eh.hexString(address))
         dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(copySize))
         argv[0] = dstRegion[0]
     if srcRegion is None:
-        logging.debug("source memory does not exist for memcpy @%s" % eh.hexString(address))
+        eh.logger.debug("source memory does not exist for memcpy @%s" % eh.hexString(address))
     else:
         if copySize <= srcRegion[1] - argv[1] and copySize <= dstRegion[1] - argv[0]:
             eh.copyEmuMem(argv[0], argv[1], copySize, userData)
         else:
-            logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
     eh.uc.reg_write(eh.regs["ret"], argv[0])
     
 def _strlenHook(eh, address, argv, funcName, userData):
@@ -243,7 +243,7 @@ def _strcpyHook(eh, address, argv, funcName, userData):
         src = eh.getEmuString(argv[1]) + b"\x00"
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for strcpy @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for strcpy @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(len(src)))
             argv[0] = dstRegion[0]
         if len(src) <= dstRegion[1] - argv[0]:
@@ -251,7 +251,7 @@ def _strcpyHook(eh, address, argv, funcName, userData):
             eh.uc.reg_write(eh.regs["ret"], argv[0])
             return
         else:
-            logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
 
     if eh.size_pointer == 8:
         val = 0xffffffffffffffff
@@ -265,7 +265,7 @@ def _strncpyHook(eh, address, argv, funcName, userData):
         src = eh.getEmuString(argv[1])
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for strncpy @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for strncpy @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(strnlen))
             argv[0] = dstRegion[0]
         if strnlen <= dstRegion[1] - argv[0]:
@@ -275,7 +275,7 @@ def _strncpyHook(eh, address, argv, funcName, userData):
             eh.uc.reg_write( eh.regs["ret"], argv[0] )
             return
         else:
-            logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
 
     if eh.size_pointer == 8:
         val = 0xffffffffffffffff
@@ -289,7 +289,7 @@ def _strncpysHook(eh, address, argv, funcName, userData):
         src = eh.getEmuString(argv[2])
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for strncpy_s @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for strncpy_s @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(strnlen))
             argv[0] = dstRegion[0]
         
@@ -299,7 +299,7 @@ def _strncpysHook(eh, address, argv, funcName, userData):
             eh.uc.reg_write(eh.regs["ret"], 0)
             return
         else:
-            logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
 
     if eh.size_pointer == 8:
         val = 0xffffffffffffffff
@@ -312,7 +312,7 @@ def _wcscpyHook(eh, address, argv, funcName, userData):
         src = eh.getEmuWideString(argv[1]) + b"\x00\x00"
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for wcscpy @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for wcscpy @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(len(src)))
             argv[0] = dstRegion[0]
         if len(src) <= dstRegion[1] - argv[0]:
@@ -320,7 +320,7 @@ def _wcscpyHook(eh, address, argv, funcName, userData):
             eh.uc.reg_write(eh.regs["ret"], argv[0])
             return
         else:
-            logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
 
     if eh.size_pointer == 8:
         val = 0xffffffffffffffff
@@ -334,7 +334,7 @@ def _wcsncpyHook(eh, address, argv, funcName, userData):
         src = eh.getEmuWideString(argv[1])
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for wcsncpy @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for wcsncpy @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(strnlen))
             argv[0] = dstRegion[0]
         if strnlen <= dstRegion[1] - argv[0]:
@@ -344,7 +344,7 @@ def _wcsncpyHook(eh, address, argv, funcName, userData):
             eh.uc.reg_write(eh.regs["ret"], argv[0])
             return
         else:
-            logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
 
     if eh.size_pointer == 8:
         val = 0xffffffffffffffff
@@ -358,7 +358,7 @@ def _wcsncpysHook(eh, address, argv, funcName, userData):
         src = eh.getEmuWideString(argv[2])
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for wcsncpy_s @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for wcsncpy_s @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(strnlen))
             argv[0] = dstRegion[0]
             
@@ -369,7 +369,7 @@ def _wcsncpysHook(eh, address, argv, funcName, userData):
             eh.uc.reg_write(eh.regs["ret"], 0)
             return
         else:
-            logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
 
     if eh.size_pointer == 8:
         val = 0xffffffffffffffff
@@ -398,7 +398,7 @@ def _mbtowcHook(eh, address, argv, funcName, userData):
         src = eh.getEmuString(argv[1]).decode("latin1")[0]
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for mbtowc variant @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for mbtowc variant @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(0x1000))
             argv[0] = dstRegion[0]
         eh.writeEmuMem(argv[0], src.encode("utf-16le")[0:2] + b"\x00\x00")
@@ -417,7 +417,7 @@ def _mbstowcsHook(eh, address, argv, funcName, userData):
             src = src[:argv[2]]
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for mbtowc variant @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for mbtowc variant @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(maxBufSize))
             argv[0] = dstRegion[0]
         if len(src) * 2 + 2 <= dstRegion[1] - argv[0]:
@@ -425,7 +425,7 @@ def _mbstowcsHook(eh, address, argv, funcName, userData):
             eh.uc.reg_write(eh.regs["ret"], len(src.replace(b"\x00", b"")))
             return
         else:
-            logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
 
     eh.uc.reg_write(eh.regs["ret"], 0)
     
@@ -434,7 +434,7 @@ def _wctombHook(eh, address, argv, funcName, userData):
         src = eh.getEmuWideString(argv[1]).decode("utf-16le")
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for wctomb variant @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for wctomb variant @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(0x1000))
         argv[0] = dstRegion[0]
         eh.writeEmuMem(argv[0], src[0].encode("utf-16le"))
@@ -453,7 +453,7 @@ def _wcstombsHook(eh, address, argv, funcName, userData):
             src = src[:argv[2]]
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for wctomb variant @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for wctomb variant @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(bufSize))
             argv[0] = dstRegion[0]
         if bufSize + 1 <= dstRegion[1] - argv[0]:
@@ -463,7 +463,7 @@ def _wcstombsHook(eh, address, argv, funcName, userData):
             eh.uc.reg_write(eh.regs["ret"], len(src.replace("\x00", "")))
             return
         else:
-            logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
 
     eh.uc.reg_write(eh.regs["ret"], 0)
     
@@ -487,7 +487,7 @@ def _multiByteToWideCharHook(eh, address, argv, funcName, userData):
             return
         dstRegion = eh.getEmuMemRegion(argv[4])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for mbtowc variant @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for mbtowc variant @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(maxBufSize))
             argv[4] = dstRegion[0]
         if len(src) * 2 + 2 <= dstRegion[1] - argv[4]:
@@ -495,7 +495,7 @@ def _multiByteToWideCharHook(eh, address, argv, funcName, userData):
             eh.uc.reg_write(eh.regs["ret"], len(src))
             return
         else:
-            logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
 
     eh.uc.reg_write(eh.regs["ret"], 0)
     
@@ -519,7 +519,7 @@ def _wideCharToMultiByteHook(eh, address, argv, funcName, userData):
             return
         dstRegion = eh.getEmuMemRegion(argv[4])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for mbtowc variant @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for mbtowc variant @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(maxBufSize))
             argv[4] = dstRegion[0]
         if len(src) + 1 <= dstRegion[1] - argv[4]:
@@ -527,7 +527,7 @@ def _wideCharToMultiByteHook(eh, address, argv, funcName, userData):
             eh.uc.reg_write(eh.regs["ret"], len(src))
             return
         else:
-            logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
 
     eh.uc.reg_write(eh.regs["ret"], 0)
     
@@ -537,13 +537,13 @@ def _memsetHook(eh, address, argv, funcName, userData):
     dstRegion = eh.getEmuMemRegion(argv[0])
     src = chr(argv[1] & 0xFF).encode("latin1")
     if dstRegion is None:
-        logging.debug("dest memory does not exist for memset @%s" % eh.hexString(address))
+        eh.logger.debug("dest memory does not exist for memset @%s" % eh.hexString(address))
         dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(setSize))
         argv[0] = dstRegion[0]
     if setSize <= dstRegion[1] - argv[0]:
         eh.writeEmuMem(argv[0], src * setSize)
     else:
-        logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+        eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
     eh.uc.reg_write(eh.regs["ret"], argv[0])
 
 def _bzeroHook(eh, address, argv, funcName, userData):
@@ -552,13 +552,13 @@ def _bzeroHook(eh, address, argv, funcName, userData):
     dstRegion = eh.getEmuMemRegion(argv[0])
     src = b"\x00"
     if dstRegion is None:
-        logging.debug("dest memory does not exist for memset @%s" % eh.hexString(address))
+        eh.logger.debug("dest memory does not exist for memset @%s" % eh.hexString(address))
         dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(setSize))
         argv[0] = dstRegion[0]
     if setSize <= dstRegion[1] - argv[0]:
         eh.writeEmuMem(argv[0], src * setSize)
     else:
-        logging.debug("dest memory not large enough @%s" % eh.hexString(address))
+        eh.logger.debug("dest memory not large enough @%s" % eh.hexString(address))
     eh.uc.reg_write(eh.regs["ret"], argv[0])
     
 def _strcatHook(eh, address, argv, funcName, userData):
@@ -566,7 +566,7 @@ def _strcatHook(eh, address, argv, funcName, userData):
         src = eh.getEmuString(argv[1]) + b"\x00"
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for strcat @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for strcat @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(len(src) + 1))
             argv[0] = dstRegion[0]
         dst = eh.getEmuString(argv[0])
@@ -584,7 +584,7 @@ def _strncatHook(eh, address, argv, funcName, userData):
         strnlen = min(strnlen, len(src))
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for strncat @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for strncat @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(strnlen + 1))
             argv[0] = dstRegion[0]
         dst = eh.getEmuString(argv[0])
@@ -600,7 +600,7 @@ def _wcscatHook(eh, address, argv, funcName, userData):
         src = eh.getEmuWideString(argv[1]) + b"\x00\x00"
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for wcscat @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for wcscat @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(len(src)))
             argv[0] = dstRegion[0]
         dst = eh.getEmuWideString(argv[0])
@@ -618,7 +618,7 @@ def _wcsncatHook(eh, address, argv, funcName, userData):
         strnlen = min(strnlen * 2, len(src))
         dstRegion = eh.getEmuMemRegion(argv[0])
         if dstRegion is None:
-            logging.debug("dest memory does not exist for wcsncat @%s" % eh.hexString(address))
+            eh.logger.debug("dest memory does not exist for wcsncat @%s" % eh.hexString(address))
             dstRegion = eh.getEmuMemRegion(eh.allocEmuMem(strnlen + 2))
             argv[0] = dstRegion[0]
         dst = eh.getEmuWideString(argv[0])
