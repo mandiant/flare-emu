@@ -235,9 +235,6 @@ class EmuHelper():
     def __init__(self, verbose=0, emuHelper=None, samplePath=None):
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
-        if isinstance(loglevel, str):
-            loglevel = loglevel.upper()
-
         self.stack = 0
         self.stackSize = 0x2000
         self.size_DWORD = 4
