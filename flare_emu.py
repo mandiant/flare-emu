@@ -451,13 +451,14 @@ class EmuHelper():
         # read targets from dict to go from higher to lower addresses
         # this is done to optimize loop by allowing hook to check for and remove other targets visited en route to
         # current target
-        old_target_info_len = len(userData["targetInfo"])
+        prev_target_info_len = len(userData["targetInfo"])
         while len(userData["targetInfo"]) > 0:
             # Fixes potential edge-case for infinite loop where the target VAs are never reached
             #  and the length never decreases. This modification verifies that the target VAs
             #  are being deleted; otherwise, breaks out of the while loop.
-            if cnt > 1 and len(userData["targetInfo"]) == old_target_info_len:
+            if cnt > 1 and len(userData["targetInfo"]) == prev_target_info_len:
                 break
+            prev_target_info_len = len(userData["targetInfo"])
 
             userData["targetVA"] = targetVA = sorted(
                 userData["targetInfo"].keys(), reverse=True)[0]
