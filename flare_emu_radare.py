@@ -92,7 +92,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
                     if op['type'] == "imm" and ".dll_" in self.getName(op['value']):
                         self.setName(candidate, "j_" + self.normalizeFuncName(self.getName(op['value'])))
             except Exception as e:
-                logging.debug("Exception searching for trampoline functions, candidate %s: %s" % (self.eh.hexString(candidate), str(e)))
+                self.eh.logger.debug("Exception searching for trampoline functions, candidate %s: %s" % (self.eh.hexString(candidate), str(e)))
 
 
     def _getFileNameFromPath(self, path):
@@ -165,7 +165,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
             self.cache['afi'][addr] = self.r.cmdj("afij %d" % addr)[0]
             return self.cache['afi'][addr]
         except Exception as e:
-            logging.debug("exception finding function info for %s: %s" 
+            self.eh.logger.debug("exception finding function info for %s: %s" 
                           % (self.eh.hexString(addr), str(e)))
             self.cache['afi'][addr] = None
             return None
@@ -421,7 +421,7 @@ class Radare2AnalysisHelper(flare_emu.AnalysisHelper):
                 if name[:2] == "0x":
                     return int(name, 16)
                 else:
-                    logging.debug("error in getNameAddr")
+                    self.eh.logger.debug("error in getNameAddr")
                     return None 
         
 
