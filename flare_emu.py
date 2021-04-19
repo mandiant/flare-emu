@@ -2156,6 +2156,9 @@ class EmuHelper():
             for reg in registers:
                 val = registers[reg]
                 if isinstance(val, str) or isinstance(val, bytes) or isinstance(val, bytearray):
+                    if isinstance(val, str):
+                        val = val.encode("latin1")
+                        
                     mem = self.allocEmuMem(len(val))
                     self.writeEmuMem(mem, val)
                     val = mem
