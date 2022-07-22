@@ -1580,6 +1580,13 @@ class EmuHelper():
         if self.arch == unicorn.UC_ARCH_X86:
             if self.mode == unicorn.UC_MODE_64:
                 sp = self.getRegVal("rsp")
+                # ensure there is mem mapped at the stack pointer
+                try:
+                    self.uc.mem_read(sp, 4)
+                except:
+                    sp = self.allocEmuMem(0x2000) + 0x1000
+                    self.uc.reg_write(self.regs["sp"], sp)
+
                 if self.filetype == "MACHO" or self.filetype == "ELF":
                     argv = [
                         self.getRegVal("rdi"),
@@ -1929,7 +1936,7 @@ class EmuHelper():
                  self.analysisHelper.getNameAddr(self.analysisHelper.getOperand(address, 0)) ==
                  self.analysisHelper.getFuncStart(
                  self.analysisHelper.getNameAddr(self.analysisHelper.getOperand(address, 0))))):
-                 
+                
                 funcName = self.getCallTargetName(address)
                 if userData["callHook"]:
                     userData["callHook"](address, self.getArgv(), funcName, userData)
