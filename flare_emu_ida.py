@@ -1,22 +1,24 @@
-import idc
+import re
+
 import idaapi
 import idautils
+import idc
+
 import flare_emu
-import logging
-import re
+
 
 class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
     def __init__(self, eh):
         super(IdaProAnalysisHelper, self).__init__()
         self.eh = eh
         info = idaapi.get_inf_structure()
-        if info.procName == "metapc":
+        if info.procname == "metapc":
             self.arch = "X86"
         else:
-            self.arch = info.procName
+            self.arch = info.procname
         if info.is_64bit():
             self.bitness = 64
-        elif info.is_32bit():    
+        elif info.is_32bit():
             self.bitness = 32
         else:
             self.bitness = None
@@ -60,9 +62,6 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
     def getBlockEndInsnAddr(self, addr, flowchart):
         bb = self._getBlockByAddr(addr, flowchart)
         return idc.prev_head(bb.end_ea, idc.get_inf_attr(idc.INF_MIN_EA))
-
-    def skipJumpTable(self, addr):
-        pass
 
     def getMinimumAddr(self):
         return idc.get_inf_attr(idc.INF_MIN_EA)
@@ -118,10 +117,10 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
 
     def getSegments(self):
         return idautils.Segments()
-        
+
     def getSegmentSize(self, addr):
         return self.getSegmentEnd(addr) - self.getSegmentStart(addr)
-        
+
     def getSectionName(self, addr):
         return self.getSegmentName(addr)
 
@@ -169,7 +168,6 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
         function = idaapi.get_func(addr)
         return list(idaapi.FlowChart(function))
 
-
     def getSpDelta(self, addr):
         f = idaapi.get_func(addr)
         return idaapi.get_sp_delta(f, addr)
@@ -198,7 +196,7 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
                 return True
 
         return False
-        
+
     def skipJumpTable(self, addr):
         while idc.print_insn_mnem(addr) == "":
             addr = idc.next_head(addr, idc.get_inf_attr(idc.INF_MAX_EA))
@@ -206,10 +204,10 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
 
     def setName(self, addr, name, size=0):
         idc.set_name(addr, name, idc.SN_NOCHECK)
-    
+
     def setComment(self, addr, comment, repeatable=False):
         idc.set_cmt(addr, comment, repeatable)
-        
+
     def normalizeFuncName(self, funcName):
         # remove appended _n from IDA Pro names
         funcName = re.sub(r"_[\d]+$", "", funcName)
