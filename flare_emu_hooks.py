@@ -1,5 +1,6 @@
 import flare_emu
 
+
 # return a fake handle value
 def _returnHandleHook(eh, address, argv, funcName, userData):
     eh.uc.reg_write(eh.regs["ret"], 42)
@@ -724,6 +725,10 @@ def _wcsdupHook(eh, address, argv, funcName, userData):
         return
     
     eh.uc.reg_write(eh.regs["ret"], 0)
-    
+
+def _freeHook(eh, address, argv, funcName, userData):
+    # uc_free() API is not provided as a Python binding
+    pass
+
 def _modHook(eh, address, argv, funcName, userData):
     eh.uc.reg_write(eh.regs["ret"], argv[0] % argv[1])
