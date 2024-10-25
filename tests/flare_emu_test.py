@@ -24,7 +24,9 @@ from unicorn import UC_ARCH_X86, UC_MEM_READ, UC_MEM_WRITE
 testStrings = ["HELLO", "GOODBYE", "TEST"]
 
 def decode(argv):
-    if len(sys.argv) == 2:
+    if len(sys.argv) == 3:
+        myEH = flare_emu.EmuHelper(samplePath=sys.argv[1], isRizin=True)
+    elif len(sys.argv) == 2:
         myEH = flare_emu.EmuHelper(samplePath=sys.argv[1])
     else:
         myEH = flare_emu.EmuHelper()
@@ -101,7 +103,10 @@ def get_mov_types(eh, va):
 
 if __name__ == '__main__':
     # optional argument with sample path to test radare2 support
-    if len(sys.argv) == 2:
+    if len(sys.argv) == 3:
+        eh = flare_emu.EmuHelper(samplePath=sys.argv[1], isRizin=True)
+        printfName = "printf"
+    elif len(sys.argv) == 2:
         eh = flare_emu.EmuHelper(samplePath=sys.argv[1])
         printfName = "printf"
     else:
