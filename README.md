@@ -19,7 +19,7 @@ It currently provides five different interfaces to serve your emulation needs, a
 ## [Installation](#installation)
 To install `flare-emu` for IDA Pro, simply drop `flare_emu.py`, `flare_emu_ida.py`, and `flare_emu_hooks.py` into your IDA Pro's `python` directory and import it as a module in your IDAPython scripts. 
 
-To install `flare-emu` for Rizin , simply ensure that `flare_emu.py`, `flare_emu_rizin.py`, and `flare_emu_hooks.py` are in Python's search path for importing modules. When using Radare2 as the binary analysis component for `flare-emu`, [rzpipe](https://github.com/rizinorg/rz-pipe) is required.
+To install `flare-emu` for Rizin , simply ensure that `flare_emu.py`, `flare_emu_rizin.py`, and `flare_emu_hooks.py` are in Python's search path for importing modules. When using Rizin as the binary analysis component for `flare-emu`, [rzpipe](https://github.com/rizinorg/rz-pipe) is required.
 
 To install `flare-emu` for Radare2, simply ensure that `flare_emu.py`, `flare_emu_radare.py`, and `flare_emu_hooks.py` are in Python's search path for importing modules. When using Radare2 as the binary analysis component for `flare-emu`, [r2pipe](https://github.com/radareorg/radare2-r2pipe) is required. 
 
