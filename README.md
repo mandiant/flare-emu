@@ -19,6 +19,8 @@ It currently provides five different interfaces to serve your emulation needs, a
 ## [Installation](#installation)
 To install `flare-emu` for IDA Pro, simply drop `flare_emu.py`, `flare_emu_ida.py`, and `flare_emu_hooks.py` into your IDA Pro's `python` directory and import it as a module in your IDAPython scripts. 
 
+To install `flare-emu` for Rizin , simply ensure that `flare_emu.py`, `flare_emu_rizin.py`, and `flare_emu_hooks.py` are in Python's search path for importing modules. When using Rizin as the binary analysis component for `flare-emu`, [rzpipe](https://github.com/rizinorg/rz-pipe) is required.
+
 To install `flare-emu` for Radare2, simply ensure that `flare_emu.py`, `flare_emu_radare.py`, and `flare_emu_hooks.py` are in Python's search path for importing modules. When using Radare2 as the binary analysis component for `flare-emu`, [r2pipe](https://github.com/radareorg/radare2-r2pipe) is required. 
 
 In any case, `flare-emu` depends on [Unicorn](https://www.unicorn-engine.org/) and its Python bindings.
@@ -57,6 +59,48 @@ In `__main__`, we begin by creating an instance of the `EmuHelper` class from `f
 The `iterateCallback` function receives the EmuHelper instance, named `eh` here, along with the address of the cross-reference, the arguments passed to this particular call, and a special dictionary named `userData` here. `userData` is not used in this simple example, but think of it as a persistent context to your emulator where you can store your own custom data. Be careful though, because `flare-emu` itself also uses this dictionary to store critical information it needs to perform its tasks. One such piece of data is the `EmuHelper` instance itself, stored in the "EmuHelper" key. If you are interested, search the source code to learn more about this dictionary. This callback function simply calls the `decrypt` function, prints the decrypted string and creates a comment for it at the address of that call to `decryptString`.
 
 `decrypt` creates a second instance of `EmuHelper` that is used to emulate the `decryptString` function itself, which will decrypt the string for us. The prototype of this `decryptString` function is as follows: `char * decryptString(char *text, int textLength, char *key, int keyLength)`. It simply decrypts the string in place. Our `decrypt` function passes in the arguments as received by the `iterateCallback` function to our call to `EmuHelper`'s `emulateRange` API. Since this is an `x86_64` binary, the calling convention uses registers to pass arguments and not the stack. `flare-emu` automatically determines which registers represent which arguments based on the architecture and file format of the binary as determined by IDA Pro, allowing you to write at least somewhat architecture agnostic code. If this were 32-bit `x86`, you would use the `stack` argument to pass the arguments instead, like so: `myEH.emulateRange(myEH.analysisHelper.getNameAddr("decryptString"), stack = [0, argv[0], argv[1], argv[2], argv[3]])`. The first stack value is the return address in `x86`, so we just use `0` as a placeholder value here. Once emulation is complete, we call the `getEmuString` API to retrieve the null-terminated string stored in the memory location pointed to by the first argument passed to the function.
+
+### Easy String Decryption Scenario with Rizin
+
+Using the same example above, not much changes when working with Rizin rather
+than IDA Pro. One difference is that `flare-emu` is currently designed to be run
+as a command-line script or within a Python shell when working with Rizin. The
+Python shell is great for ad-hoc problem solving while the command-line script
+is great for batch processing. The Rizin version of the script above looks like
+this (you can also omit the sample path to run it within rizin):
+
+```
+from __future__ import print_function
+import sys
+import flare_emu
+
+
+def decrypt(argv, eh):
+  myEH = flare_emu.EmuHelper(samplePath=sys.argv[1], emuHelper=eh, isRizin=True)
+  myEH.emulateRange(
+      myEH.analysisHelper.getNameAddr("decryptString"),
+      registers={
+          "arg1": argv[0],
+          "arg2": argv[1],
+          "arg3": argv[2],
+          "arg4": argv[3],
+      },
+  )
+  return myEH.getEmuString(argv[0])
+
+
+def iterateCallback(eh, address, argv, userData):
+  s = decrypt(argv, eh)
+  print("%s: %s" % (eh.hexString(address), s))
+  eh.analysisHelper.setComment(address, s, False)
+
+
+if __name__ == "__main__":
+  eh = flare_emu.EmuHelper(samplePath=sys.argv[1], isRizin=True)
+  rz = eh.analysisHelper.r
+  eh.analysisHelper.setName(0x100000D60, "decryptString")
+  eh.iterate(eh.analysisHelper.getNameAddr("decryptString"), iterateCallback)
+```
 
 ### Easy String Decryption Scenario with Radare2
 Using the same example above, not much changes when working with Radare2 rather than IDA Pro. One difference is that `flare-emu` is currently designed to be run as a command-line script or within a Python shell when working with Radare2. The Python shell is great for ad-hoc problem solving while the command-line script is great for batch processing. The Radare2 version of the script above looks like this:
