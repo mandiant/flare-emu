@@ -3,15 +3,27 @@ import re
 import idaapi
 import idautils
 import idc
+import ida_ida
 
 import flare_emu
 
+class Info():
+    def __init__(self):
+        self.procname = ida_ida.inf_get_procname()
+        self.bitness = ida_ida.inf_get_app_bitness()
+        self.filetype = ida_ida.inf_get_filetype()
+
+    def is_64bit(self):
+        return ida_ida.inf_is_64bit()
+    
+    def is_32bit(self):
+        return ida_ida.inf_is_32bit_exactly()
 
 class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
     def __init__(self, eh):
         super(IdaProAnalysisHelper, self).__init__()
         self.eh = eh
-        info = idaapi.get_inf_structure()
+        info = Info()
         if info.procname == "metapc":
             self.arch = "X86"
         else:
