@@ -210,5 +210,7 @@ class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
 
     def normalizeFuncName(self, funcName):
         # remove appended _n from IDA Pro names
+        if funcName.startswith("sub_") or funcName.startswith("loc_"):
+            return funcName
         funcName = re.sub(r"_[\d]+$", "", funcName)
         return funcName
