@@ -236,7 +236,7 @@ class EmuHelper():
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
         self.stack = 0
-        self.stackSize = 0x2000
+        self.stackSize = 0x8000
         self.size_DWORD = 4
         self.size_pointer = 0
         self.callMnems = ["CALL", "BL", "BLX", "BLR",
@@ -1793,8 +1793,8 @@ class EmuHelper():
                 if self.getRegVal("pc") != userData["currAddr"]:
                     # get SP delta value for next instruction to adjust stack accordingly since we are skipping this
                     # instruction
-                    uc.reg_write(self.regs["sp"], self.getRegVal("sp") +
-                                    self.analysisHelper.getSpDelta(self.getRegVal("pc")))
+                    #uc.reg_write(self.regs["sp"], self.getRegVal("sp") +
+                    #                self.analysisHelper.getSpDelta(self.getRegVal("pc")))
                     return
                  
                 if userData["hookApis"] and self._handleApiHooks(address, self.getArgv(), funcName, userData):
@@ -1963,8 +1963,8 @@ class EmuHelper():
                 if self.getRegVal("pc") != userData["currAddr"]:
                     # get SP delta value for next instruction to adjust stack accordingly since we are skipping this
                     # instruction
-                    uc.reg_write(self.regs["sp"], self.getRegVal("sp") +
-                                 self.analysisHelper.getSpDelta(self.getRegVal("pc")))
+                    #uc.reg_write(self.regs["sp"], self.getRegVal("sp") +
+                    #             self.analysisHelper.getSpDelta(self.getRegVal("pc")))
                     return
                 
                 if userData["hookApis"] and self._handleApiHooks(address, self.getArgv(), funcName, userData):
