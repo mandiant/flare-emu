@@ -60,6 +60,15 @@ The `iterateCallback` function receives the EmuHelper instance, named `eh` here,
 
 `decrypt` creates a second instance of `EmuHelper` that is used to emulate the `decryptString` function itself, which will decrypt the string for us. The prototype of this `decryptString` function is as follows: `char * decryptString(char *text, int textLength, char *key, int keyLength)`. It simply decrypts the string in place. Our `decrypt` function passes in the arguments as received by the `iterateCallback` function to our call to `EmuHelper`'s `emulateRange` API. Since this is an `x86_64` binary, the calling convention uses registers to pass arguments and not the stack. `flare-emu` automatically determines which registers represent which arguments based on the architecture and file format of the binary as determined by IDA Pro, allowing you to write at least somewhat architecture agnostic code. If this were 32-bit `x86`, you would use the `stack` argument to pass the arguments instead, like so: `myEH.emulateRange(myEH.analysisHelper.getNameAddr("decryptString"), stack = [0, argv[0], argv[1], argv[2], argv[3]])`. The first stack value is the return address in `x86`, so we just use `0` as a placeholder value here. Once emulation is complete, we call the `getEmuString` API to retrieve the null-terminated string stored in the memory location pointed to by the first argument passed to the function.
 
+### flare-emu and idalib
+* install IDA Pro
+* install idalib per the Hex-Rays user guide
+  * (activate virtual environment)
+  * pip install /path/to/IDA/installation/idalib/python
+  * python /path/to/IDA/installation/idalib/python/py-activate-idalib.py [-d /path/to/active/IDA/installation]
+* import idapro and write your script
+  * see tests/test_flare_emu_idalib.py for an example
+
 ### Easy String Decryption Scenario with Rizin
 
 Using the same example above, not much changes when working with Rizin rather

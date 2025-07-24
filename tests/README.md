@@ -16,3 +16,5 @@ The `objc2_analyzer_test_<arch>` binaries are Mach-O executables that should be 
 The `flare_emu_test_discovery` binary is a Mach-O executable that should be loaded into IDA Pro and tested with the `flare_emu_test_discovery.py` IDAPython script.
 
 Check the printed output of these test scripts to ensure there are no reported errors. Note that r2pipe errors may be the result of issues in Radare2, in which case they can be ignored.
+
+To test the idalib integration (using idalib), run `$ pytest tests/test_flare_emu_idalib.py`
