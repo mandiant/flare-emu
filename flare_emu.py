@@ -2148,14 +2148,18 @@ class EmuHelper():
             """
             mov.w r0, #0xf00000
             mcr p15, #0x0, r0, c1, c0, #0x2
-            isb sy
-            mov.w r3, #0x40000000
+            isb sy  # the above instructions write to co-processor module (ACTLR), just the below seems to suffice
+            mov.w r3, #0x40000000  # these two instructions enable the Floating-Point Unit (FPU)
             vmsr fpexc, r3
+
+            alternatively, could do something like
+                # reg_read(cp, is64, sec, crn, crm, opc1, opc2, val)
+                c1_c0_2 = (15, 0, 0, 1, 0, 0, 2, 0)
+                tmp = self.uc.reg_read(unicorn.arm_const.UC_ARM_REG_CP_REG, c1_c0_2)
+                c1_c0_2 = (15, 0, 0, 1, 0, 0, 2, tmp | (0xf << 20))
+                self.uc.reg_write(unicorn.arm_const.UC_ARM_REG_CP_REG, c1_c0_2)
+                self.uc.reg_write(unicorn.arm_const.UC_ARM_REG_FPEXC, 0x40000000)
             """
-            # ENABLE_VFP_CODE = "\x0f\x06\xa0\xe3\x50\x0f\x01\xee\x6f\xf0\x7f\xf5\x01\x31\xa0\xe3\x10\x3a\xe8\xee"
-            # self.emulateBytes(ENABLE_VFP_CODE, {}, [])
-            tmp = self.uc.reg_read(unicorn.arm_const.UC_ARM_REG_C1_C0_2)
-            self.uc.reg_write(unicorn.arm_const.UC_ARM_REG_C1_C0_2, tmp | (0xf << 20))
             self.uc.reg_write(unicorn.arm_const.UC_ARM_REG_FPEXC, 0x40000000)
         elif self.arch == unicorn.UC_ARCH_ARM64:
             """

@@ -3,30 +3,63 @@ import re
 import idaapi
 import idautils
 import idc
+import ida_ida
 
 import flare_emu
+
+# wrappers for IDA Pro (IDAPython) 7, 8 and 9 compability
+version = float(idaapi.get_kernel_version())
+if version < 9.0:
+
+    def get_filetype() -> "ida_ida.filetype_t":
+        return idaapi.get_inf_structure().filetype
+
+    def get_processor_name() -> str:
+        return idaapi.get_inf_structure().procname
+
+    def is_32bit() -> bool:
+        info: idaapi.idainfo = idaapi.get_inf_structure()
+        return info.is_32bit()
+
+    def is_64bit() -> bool:
+        info: idaapi.idainfo = idaapi.get_inf_structure()
+        return info.is_64bit()
+
+else:
+
+    def get_filetype() -> "ida_ida.filetype_t":
+        return ida_ida.inf_get_filetype()
+
+    def get_processor_name() -> str:
+        return idc.get_processor_name()
+
+    def is_32bit() -> bool:
+        return idaapi.inf_is_32bit_exactly()
+
+    def is_64bit() -> bool:
+        return idaapi.inf_is_64bit()
 
 
 class IdaProAnalysisHelper(flare_emu.AnalysisHelper):
     def __init__(self, eh):
         super(IdaProAnalysisHelper, self).__init__()
         self.eh = eh
-        info = idaapi.get_inf_structure()
-        if info.procname == "metapc":
+        if get_processor_name() == "metapc":
             self.arch = "X86"
         else:
-            self.arch = info.procname
-        if info.is_64bit():
+            self.arch = get_processor_name()
+        if is_64bit():
             self.bitness = 64
-        elif info.is_32bit():
+        elif is_32bit():
             self.bitness = 32
         else:
             self.bitness = None
-        if info.filetype == 11:
+        filetype = get_filetype()
+        if filetype == idaapi.f_PE:
             self.filetype = "PE"
-        elif info.filetype == 25:
+        elif filetype == idaapi.f_MACHO:
             self.filetype = "MACHO"
-        elif info.filetype == 18:
+        elif filetype == idaapi.f_ELF:
             self.filetype = "ELF"
         else:
             self.filetype = "UNKNOWN"
