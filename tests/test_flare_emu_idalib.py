@@ -162,13 +162,80 @@ def test_memory_access_hook(path):
     userData = dict()
     userData["mov_types_hook"] = dict()
     eh.emulateRange(main_va, memAccessHook=get_mov_types_hook, hookData=userData)
-    if get_mov_types(eh, main_va) != userData["mov_types_hook"]:
-        print(
-            "FAILED: memory access hook test. Memory access identified in binary analysis and hooked instructions differ."
-        )
-        assert False
-    else:
-        print("memory access hook test passed")
-        assert True
+    try:
+        if get_mov_types(eh, main_va) != userData["mov_types_hook"]:
+            print(
+                "FAILED: memory access hook test. Memory access identified in binary analysis and hooked instructions differ."
+            )
+            assert False
+        else:
+            print("memory access hook test passed")
+            assert True
+    finally:
+        idapro.close_database()
 
-    idapro.close_database()
+
+@pytest.mark.parametrize("path", ["flare_emu_test_discovery"], indirect=True)
+def test_discovery(path):
+    """ via flare_emu_test_discovery.py """
+
+    try:
+        import idapro
+        import idc
+
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import flare_emu_ida
+    except ImportError as e:
+        print(e)
+
+    FIX_CNT = 2
+
+    # idapro.enable_console_messages(True)
+    idapro.open_database(str(path), run_auto_analysis=True)
+
+    eh = flare_emu.EmuHelper()
+    eh.emulateFrom(idc.get_name_ea_simple("_main"),strict=False)
+
+    # scan instructions to confirm they were fixed
+    start = idc.get_func_attr(idc.get_name_ea_simple("_main"), idc.FUNCATTR_START)
+    end = idc.get_inf_attr(idc.INF_MAX_EA)
+
+    addr = start
+    fixed = 0
+    while addr < end:
+        if idc.print_insn_mnem(addr) == "" and idc.print_insn_mnem(addr+1) == "lea":
+            fixed += 1
+            if fixed == FIX_CNT:
+                break
+        addr = idc.next_head(addr, idc.get_inf_attr(idc.INF_MAX_EA))
+
+    try:
+        assert fixed == FIX_CNT
+    finally:
+        idapro.close_database()
+
+
+@pytest.mark.parametrize("path", ["flare_emu_vfp_test"], indirect=True)
+def test_discovery(path):
+    """ via flare_emu_vfp_test.py """
+
+    try:
+        import idapro
+
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        import flare_emu_ida
+    except ImportError as e:
+        print(e)
+
+    # idapro.enable_console_messages(True)
+    idapro.open_database(str(path), run_auto_analysis=True)
+
+    eh = flare_emu.EmuHelper()
+
+    try:
+        eh.emulateRange(0x460, 0x494, skipCalls=False)
+        assert True
+    except:
+        assert False
+    finally:
+        idapro.close_database()
