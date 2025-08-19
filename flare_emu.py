@@ -16,19 +16,20 @@
 ############################################
 
 from __future__ import print_function
-import unicorn
-import unicorn.x86_const
-import unicorn.arm_const
-import unicorn.arm64_const
-from copy import deepcopy
+
 import logging
-import struct
 import re
-import flare_emu_hooks
-import types
+import struct
 import sys
+import types
+from copy import deepcopy
 
+import unicorn
+import unicorn.arm64_const
+import unicorn.arm_const
+import unicorn.x86_const
 
+import flare_emu_hooks
 
 PAGESIZE = 0x1000
 PAGEALIGNCHECK = 0xfff
@@ -1373,7 +1374,9 @@ class EmuHelper():
         self.apiHooks["calloc"] = flare_emu_hooks._callocHook
         self.apiHooks["realloc"] = flare_emu_hooks._reallocHook
         self.apiHooks["memcpy"] = flare_emu_hooks._memcpyHook
+        self.apiHooks["memcpy_chk"] = flare_emu_hooks._memcpyHook
         self.apiHooks["memmove"] = flare_emu_hooks._memcpyHook
+        self.apiHooks["memmove_chk"] = flare_emu_hooks._memcpyHook
         self.apiHooks["strlen"] = flare_emu_hooks._strlenHook
         self.apiHooks["lstrlenA"] = flare_emu_hooks._strlenHook
         self.apiHooks["strnlen"] = flare_emu_hooks._strnlenHook
@@ -1395,7 +1398,9 @@ class EmuHelper():
         self.apiHooks["mbsicmp"] = flare_emu_hooks._stricmpHook
         self.apiHooks["mbsnicmp"] = flare_emu_hooks._strnicmpHook
         self.apiHooks["strcpy"] = flare_emu_hooks._strcpyHook
+        self.apiHooks["strcpy_chk"] = flare_emu_hooks._strcpyHook
         self.apiHooks["strncpy"] = flare_emu_hooks._strncpyHook
+        self.apiHooks["strncpy_chk"] = flare_emu_hooks._strncpyHook
         self.apiHooks["lstrcpyA"] = flare_emu_hooks._strcpyHook
         self.apiHooks["lstrcpynA"] = flare_emu_hooks._strncpyHook
         self.apiHooks["strncpy_s"] = flare_emu_hooks._strncpysHook
@@ -1423,8 +1428,10 @@ class EmuHelper():
         self.apiHooks["mbsnlen"] = flare_emu_hooks._strnlenHook
         self.apiHooks["mbstrnlen"] = flare_emu_hooks._strnlenHook
         self.apiHooks["strcat"] = flare_emu_hooks._strcatHook
+        self.apiHooks["strcat_chk"] = flare_emu_hooks._strcatHook
         self.apiHooks["lstrcatA"] = flare_emu_hooks._strcatHook
         self.apiHooks["strncat"] = flare_emu_hooks._strncatHook
+        self.apiHooks["strncat_chk"] = flare_emu_hooks._strncatHook
         self.apiHooks["wcscat"] = flare_emu_hooks._wcscatHook
         self.apiHooks["lstrcatW"] = flare_emu_hooks._wcscatHook
         self.apiHooks["wcsncat"] = flare_emu_hooks._wcsncatHook
@@ -1446,8 +1453,10 @@ class EmuHelper():
         self.apiHooks["MultiByteToWideChar"] = flare_emu_hooks._multiByteToWideCharHook
         self.apiHooks["WideCharToMultiByte"] = flare_emu_hooks._wideCharToMultiByteHook
         self.apiHooks["memset"] = flare_emu_hooks._memsetHook
+        self.apiHooks["memset_chk"] = flare_emu_hooks._memsetHook
         self.apiHooks["ZeroMemory"] = flare_emu_hooks._bzeroHook
         self.apiHooks["bzero"] = flare_emu_hooks._bzeroHook
+        self.apiHooks["free"] = flare_emu_hooks._freeHook
         
         # builtins
         self.apiHooks["umodsi3"] = flare_emu_hooks._modHook
@@ -1537,13 +1546,13 @@ class EmuHelper():
             if ptr >= region[0] and ptr < region[1]:
                 return True
         return False
-        
+
     def getEmuMemRegion(self, addr):
         for region in self.uc.mem_regions():
             if addr >= region[0] and addr < region[1]:
                 return (region[0], region[1] + 1)
         return None
-        
+
     # allocate emulator memory, attempts to honor specified address, otherwise begins allocations 
     # at an available page
     # aligned address, returns address, rebased if necessary
@@ -1572,8 +1581,7 @@ class EmuHelper():
             return addr
 
         return None
-     
-    
+
     def copyEmuMem(self, dstAddr, srcAddr, size, userData):
         size = self._checkMemSize(size, userData)
         try:
